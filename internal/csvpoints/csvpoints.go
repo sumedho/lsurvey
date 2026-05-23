@@ -11,7 +11,7 @@ import (
 	"lsurvey/internal/project"
 )
 
-var Header = []string{"id", "northing", "easting", "elevation", "code", "description"}
+var Header = []string{"id", "easting", "northing", "elevation", "code", "description"}
 
 func ImportFile(path string, p *project.Project) (int, error) {
 	f, err := os.Open(path)
@@ -78,8 +78,8 @@ func Export(w io.Writer, p *project.Project) error {
 		}
 		if err := writer.Write([]string{
 			pt.ID,
-			strconv.FormatFloat(pt.Northing, 'f', -1, 64),
 			strconv.FormatFloat(pt.Easting, 'f', -1, 64),
+			strconv.FormatFloat(pt.Northing, 'f', -1, 64),
 			elev,
 			pt.Code,
 			pt.Description,
@@ -95,13 +95,13 @@ func pointFromRow(row []string) (geom.Point, error) {
 	if row[0] == "" {
 		return geom.Point{}, fmt.Errorf("id is required")
 	}
-	northing, err := strconv.ParseFloat(row[1], 64)
+	easting, err := strconv.ParseFloat(row[1], 64)
 	if err != nil {
-		return geom.Point{}, fmt.Errorf("invalid northing %q", row[1])
+		return geom.Point{}, fmt.Errorf("invalid easting %q", row[1])
 	}
-	easting, err := strconv.ParseFloat(row[2], 64)
+	northing, err := strconv.ParseFloat(row[2], 64)
 	if err != nil {
-		return geom.Point{}, fmt.Errorf("invalid easting %q", row[2])
+		return geom.Point{}, fmt.Errorf("invalid northing %q", row[2])
 	}
 	var elev *float64
 	if row[3] != "" {
@@ -113,8 +113,8 @@ func pointFromRow(row []string) (geom.Point, error) {
 	}
 	return geom.Point{
 		ID:          row[0],
-		Northing:    northing,
 		Easting:     easting,
+		Northing:    northing,
 		Elevation:   elev,
 		Code:        row[4],
 		Description: row[5],

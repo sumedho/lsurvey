@@ -10,7 +10,7 @@ import (
 
 func TestImportCSVStrictHeaderAndRows(t *testing.T) {
 	p := project.New("test")
-	input := "id,northing,easting,elevation,code,description\n1,100,200,5.5,PEG,corner\n2,110,210,,TREE,\n"
+	input := "id,easting,northing,elevation,code,description\n1,200,100,5.5,PEG,corner\n2,210,110,,TREE,\n"
 	count, err := Import(strings.NewReader(input), p)
 	if err != nil {
 		t.Fatal(err)
@@ -36,7 +36,7 @@ func TestImportCSVRejectsBadHeader(t *testing.T) {
 func TestImportCSVIsAtomicOnRowError(t *testing.T) {
 	p := project.New("test")
 	p.Points["1"] = geom.Point{ID: "1", Northing: 1, Easting: 1, Code: "OLD"}
-	input := "id,northing,easting,elevation,code,description\n1,100,200,,NEW,\n2,bad,210,,TREE,\n"
+	input := "id,easting,northing,elevation,code,description\n1,200,100,,NEW,\n2,bad,210,,TREE,\n"
 	count, err := Import(strings.NewReader(input), p)
 	if err == nil {
 		t.Fatal("expected row error")
@@ -64,9 +64,9 @@ func TestExportCSV(t *testing.T) {
 	}
 	got := out.String()
 	for _, want := range []string{
-		"id,northing,easting,elevation,code,description\n",
-		"1,100,200,5.5,PEG,corner\n",
-		"2,110,210,,,\n",
+		"id,easting,northing,elevation,code,description\n",
+		"1,200,100,5.5,PEG,corner\n",
+		"2,210,110,,,\n",
 	} {
 		if !strings.Contains(got, want) {
 			t.Fatalf("csv missing %q:\n%s", want, got)

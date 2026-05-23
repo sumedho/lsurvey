@@ -36,12 +36,12 @@ func TestExecuteCommandFilterSortAndHelp(t *testing.T) {
 	if m.sort != SortCode || m.sortAsc {
 		t.Fatalf("sort=%s asc=%v", m.sort, m.sortAsc)
 	}
-	m.ExecuteCommand("help radiate")
+	m.ExecuteCommand("help rad")
 	if m.mode != ModeHelp {
 		t.Fatal("expected help mode")
 	}
-	if !strings.Contains(m.help.View(), "radiate") {
-		t.Fatalf("help view missing radiate: %s", m.help.View())
+	if !strings.Contains(m.help.View(), "rad") {
+		t.Fatalf("help view missing rad: %s", m.help.View())
 	}
 	m.width = 80
 	m.height = 24

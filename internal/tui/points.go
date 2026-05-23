@@ -21,7 +21,7 @@ const (
 	SortDesc  SortField = "desc"
 )
 
-var sortFields = []SortField{SortID, SortNorth, SortEast, SortElev, SortCode, SortDesc}
+var sortFields = []SortField{SortID, SortEast, SortNorth, SortElev, SortCode, SortDesc}
 
 func ParseSortField(value string) (SortField, bool) {
 	switch SortField(strings.ToLower(value)) {
@@ -77,7 +77,7 @@ func elevationValue(p geom.Point) float64 {
 
 func FormatPointRows(points []geom.Point, height int, precision int) string {
 	var b strings.Builder
-	b.WriteString(fmt.Sprintf("%-10s %14s %14s %12s %-10s %s\n", "ID", "Northing", "Easting", "Elevation", "Code", "Description"))
+	b.WriteString(fmt.Sprintf("%-10s %14s %14s %12s %-10s %s\n", "ID", "Easting", "Northing", "Elevation", "Code", "Description"))
 	b.WriteString(strings.Repeat("-", 78))
 	b.WriteByte('\n')
 	limit := height - 2
@@ -92,7 +92,7 @@ func FormatPointRows(points []geom.Point, height int, precision int) string {
 		if pt.Elevation != nil {
 			elev = formatDecimal(*pt.Elevation, precision)
 		}
-		fmt.Fprintf(&b, "%-10s %14s %14s %12s %-10s %s\n", pt.ID, formatDecimal(pt.Northing, precision), formatDecimal(pt.Easting, precision), elev, pt.Code, pt.Description)
+		fmt.Fprintf(&b, "%-10s %14s %14s %12s %-10s %s\n", pt.ID, formatDecimal(pt.Easting, precision), formatDecimal(pt.Northing, precision), elev, pt.Code, pt.Description)
 	}
 	if len(points) > limit {
 		fmt.Fprintf(&b, "... %d more\n", len(points)-limit)

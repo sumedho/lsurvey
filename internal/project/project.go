@@ -21,8 +21,8 @@ type Line struct {
 }
 
 type ContourVertex struct {
-	Northing float64 `json:"northing"`
 	Easting  float64 `json:"easting"`
+	Northing float64 `json:"northing"`
 }
 
 type ContourPolyline struct {

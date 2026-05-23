@@ -98,7 +98,8 @@ The command line is the main way to work with the project. Type `help` or press
 - `F1`: open command help.
 - `F2`: toggle the ASCII map view.
 - `/`: start a point filter command.
-- `Tab`: accept the current command completion.
+- `Tab`: advance the current completion one input at a time. For point IDs
+  being created, completion suggests the next unused integer point ID.
 - `Ctrl+n` / `Ctrl+p`: cycle command completions.
 - `Up` / `Down`: browse previous commands when the command input is empty.
 - `Alt+s`: cycle point sort field.
@@ -142,8 +143,8 @@ Notes:
 ## Point Commands
 
 ```text
-pt add <id> <north> <east> [elev] [code]
-pt edit <id> [north=] [east=] [elev=] [code=] [desc=]
+pt add <id> <east> <north> [elev] [code]
+pt edit <id> [east=] [north=] [elev=] [code=] [desc=]
 pt del <id>
 pt rename <old> <new>
 pt list
@@ -152,8 +153,8 @@ pt list
 Examples:
 
 ```text
-pt add 1 1000 2000 PEG
-pt add 2 1010 2010 52.4 TREE
+pt add 1 2000 1000 PEG
+pt add 2 2010 1010 52.4 TREE
 pt edit 1 code=PEG desc=corner
 pt edit 1 desc="front left corner"
 pt rename 100 101
@@ -163,6 +164,10 @@ pt list
 
 Point delete is protected: a point used by a stored line cannot be deleted until
 the referencing line is deleted or edited.
+
+Point coordinates are entered and displayed as easting, northing. For commands
+that create a point, command completion suggests the next unused integer point
+ID.
 
 ## Line Commands
 
@@ -190,7 +195,8 @@ requires the line to exist.
 ```text
 inverse <from> <to>
 angle <back> <vertex> <forward>
-radiate <from> <azimuth|bearing> <distance> [vdiff <delta>] as <id> [code]
+rad <from> <azimuth|bearing> <distance> [vdiff <delta>] as <id> [code]
+rad3d <from> <azimuth|bearing> <slope_distance> <zenith> as <id> [code]
 midpoint <p1> <p2> as <id> [code]
 offset <p1> <p2> <offset> <chainage> as <id> [code]
 offset <line_id> <offset> <chainage> as <id> [code]
@@ -201,8 +207,9 @@ Examples:
 ```text
 inverse 1 2
 angle 1 2 3
-radiate 1 90.0000 10 as 2 CALC
-radiate 1 N 45.0000 E 50 vdiff 1.2 as 3 PEG
+rad 1 90.0000 10 as 2 CALC
+rad 1 N 45.0000 E 50 vdiff 1.2 as 3 PEG
+rad3d 1 90.0000 10 90.0000 as 4 SHOT
 midpoint 1 2 as 10 MID
 offset 1 2 5 25 as 20 OFF
 offset L1 5 25 as 20 OFF
@@ -213,6 +220,9 @@ values when both points have elevations.
 
 `angle <back> <vertex> <forward>` reports both the inside and outside angle at
 the vertex point.
+
+`rad3d` requires the start point to have an elevation. Zenith angle uses 90° as
+horizontal; smaller angles go up and larger angles go down.
 
 Positive offset is calculated to the left of the direction from the first point
 to the second point, or from the stored line's `from` point to its `to` point.
@@ -314,7 +324,7 @@ sort north desc
 map
 map lines
 map fit
-help radiate
+help rad
 ```
 
 ## Import And Export Commands
@@ -339,15 +349,15 @@ the project.
 CSV import/export uses this exact header:
 
 ```text
-id,northing,easting,elevation,code,description
+id,easting,northing,elevation,code,description
 ```
 
 Example CSV:
 
 ```csv
-id,northing,easting,elevation,code,description
-1,1000,2000,52.4,PEG,front left corner
-2,1010,2010,,TREE,
+id,easting,northing,elevation,code,description
+1,2000,1000,52.4,PEG,front left corner
+2,2010,1010,,TREE,
 ```
 
 Elevation may be blank for 2D points.
@@ -402,11 +412,11 @@ example:
 new Lot 42
 desc Boundary survey Lot 42
 precision 3
-pt add 1 1000 1000 25.500 PEG
-pt add 2 1100 1000 25.650 PEG
+pt add 1 2000 1000 25.500 PEG
+pt add 2 2000 1100 25.650 PEG
 line add B1 1 2 BOUNDARY
 inverse 1 2
-radiate 1 N 45.0000 E 50 as 3 CALC
+rad 1 N 45.0000 E 50 as 3 CALC
 angle 2 1 3
 offset B1 5 25 as 20 OFF
 map lines

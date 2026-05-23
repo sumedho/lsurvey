@@ -33,8 +33,10 @@ func Execute(p *project.Project, command string) (Result, error) {
 		return execInverse(p, fields)
 	case "angle":
 		return execAngle(p, fields)
-	case "radiate":
-		return execRadiate(p, fields)
+	case "rad":
+		return execRad(p, fields)
+	case "rad3d":
+		return execRad3D(p, fields)
 	case "midpoint":
 		return execMidpoint(p, fields)
 	case "offset":
@@ -65,17 +67,17 @@ func execPoint(p *project.Project, f []string) (Result, error) {
 	switch f[1] {
 	case "add":
 		if len(f) < 5 {
-			return Result{}, fmt.Errorf("usage: pt add <id> <north> <east> [elev] [code]")
+			return Result{}, fmt.Errorf("usage: pt add <id> <east> <north> [elev] [code]")
 		}
 		id := f[2]
 		if _, ok := p.Points[id]; ok {
 			return Result{}, fmt.Errorf("point %q already exists", id)
 		}
-		n, err := parseFloat("northing", f[3])
+		e, err := parseFloat("easting", f[3])
 		if err != nil {
 			return Result{}, err
 		}
-		e, err := parseFloat("easting", f[4])
+		n, err := parseFloat("northing", f[4])
 		if err != nil {
 			return Result{}, err
 		}
@@ -91,11 +93,11 @@ func execPoint(p *project.Project, f []string) (Result, error) {
 				code = f[5]
 			}
 		}
-		p.Points[id] = geom.Point{ID: id, Northing: n, Easting: e, Elevation: z, Code: code}
+		p.Points[id] = geom.Point{ID: id, Easting: e, Northing: n, Elevation: z, Code: code}
 		return Result{Message: "added point " + id, Created: []string{"point:" + id}}, nil
 	case "edit":
 		if len(f) < 4 {
-			return Result{}, fmt.Errorf("usage: pt edit <id> [north=] [east=] [elev=] [code=] [desc=]")
+			return Result{}, fmt.Errorf("usage: pt edit <id> [east=] [north=] [elev=] [code=] [desc=]")
 		}
 		id := f[2]
 		pt, ok := p.Points[id]
@@ -298,7 +300,7 @@ func execInverse(p *project.Project, f []string) (Result, error) {
 	}
 	inv := geom.Inverse(from, to)
 	precision := p.DisplayPrecision()
-	msg := fmt.Sprintf("az=%s hd=%s dn=%s de=%s", inv.Azimuth.FormatDMS(2), formatDistance(inv.HorizontalDistance, precision), formatDistance(inv.DeltaNorthing, precision), formatDistance(inv.DeltaEasting, precision))
+	msg := fmt.Sprintf("az=%s hd=%s de=%s dn=%s", inv.Azimuth.FormatDMS(2), formatDistance(inv.HorizontalDistance, precision), formatDistance(inv.DeltaEasting, precision), formatDistance(inv.DeltaNorthing, precision))
 	if inv.DeltaElevation != nil {
 		msg += fmt.Sprintf(" dz=%s sd=%s", formatDistance(*inv.DeltaElevation, precision), formatDistance(*inv.SlopeDistance, precision))
 	}
@@ -328,9 +330,9 @@ func execAngle(p *project.Project, f []string) (Result, error) {
 	return Result{Message: fmt.Sprintf("inside=%s outside=%s", result.Inside.FormatDMS(2), result.Outside.FormatDMS(2))}, nil
 }
 
-func execRadiate(p *project.Project, f []string) (Result, error) {
-	if len(f) < 7 {
-		return Result{}, fmt.Errorf("usage: radiate <from> <azimuth|bearing> <distance> [vdiff <delta>] as <id> [code]")
+func execRad(p *project.Project, f []string) (Result, error) {
+	if len(f) < 6 {
+		return Result{}, fmt.Errorf("usage: rad <from> <azimuth|bearing> <distance> [vdiff <delta>] as <id> [code]")
 	}
 	from, err := point(p, f[1])
 	if err != nil {
@@ -359,11 +361,53 @@ func execRadiate(p *project.Project, f []string) (Result, error) {
 		i += 2
 	}
 	if i >= len(f) || f[i] != "as" || i+1 >= len(f) {
-		return Result{}, fmt.Errorf("radiate requires as <id>")
+		return Result{}, fmt.Errorf("rad requires as <id>")
 	}
 	id := f[i+1]
 	code := optional(f, i+2)
 	pt := geom.Radiate(from, az, dist, dz, id, code)
+	p.Points[id] = pt
+	return Result{Message: "created point " + id, Created: []string{"point:" + id}}, nil
+}
+
+func execRad3D(p *project.Project, f []string) (Result, error) {
+	if len(f) < 7 {
+		return Result{}, fmt.Errorf("usage: rad3d <from> <azimuth|bearing> <slope_distance> <zenith> as <id> [code]")
+	}
+	from, err := point(p, f[1])
+	if err != nil {
+		return Result{}, err
+	}
+	if from.Elevation == nil {
+		return Result{}, fmt.Errorf("rad3d requires start point elevation")
+	}
+	az, used, err := parseAngleTokens(f[2:])
+	if err != nil {
+		return Result{}, err
+	}
+	i := 2 + used
+	if i >= len(f) {
+		return Result{}, fmt.Errorf("rad3d requires slope distance")
+	}
+	slopeDist, err := parseFloat("slope distance", f[i])
+	if err != nil {
+		return Result{}, err
+	}
+	i++
+	if i >= len(f) {
+		return Result{}, fmt.Errorf("rad3d requires zenith angle")
+	}
+	zenith, err := geom.ParseAngle(f[i])
+	if err != nil {
+		return Result{}, err
+	}
+	i++
+	if i >= len(f) || f[i] != "as" || i+1 >= len(f) {
+		return Result{}, fmt.Errorf("rad3d requires as <id>")
+	}
+	id := f[i+1]
+	code := optional(f, i+2)
+	pt := geom.Radiate3D(from, az, slopeDist, zenith, id, code)
 	p.Points[id] = pt
 	return Result{Message: "created point " + id, Created: []string{"point:" + id}}, nil
 }
@@ -449,7 +493,7 @@ func execIntersect(p *project.Project, f []string) (Result, error) {
 	}
 	switch f[1] {
 	case "bearing-bearing":
-		if len(f) < 9 {
+		if len(f) < 8 {
 			return Result{}, fmt.Errorf("usage: intersect bearing-bearing <p1> <brg1> <p2> <brg2> as <id> [code]")
 		}
 		p1, err := point(p, f[2])

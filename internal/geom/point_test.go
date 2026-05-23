@@ -60,6 +60,27 @@ func TestRadiateStoresCode(t *testing.T) {
 	}
 }
 
+func TestRadiate3DUsesSlopeDistanceAndZenith(t *testing.T) {
+	z := 10.0
+	got := Radiate3D(
+		Point{Easting: 100, Northing: 200, Elevation: &z},
+		AngleFromDegrees(0),
+		10,
+		AngleFromDegrees(60),
+		"2",
+		"CALC",
+	)
+	assertClose(t, got.Easting, 100)
+	assertClose(t, got.Northing, 200+10*math.Sin(60*DegToRad))
+	if got.Elevation == nil {
+		t.Fatal("expected elevation")
+	}
+	assertClose(t, *got.Elevation, 15)
+	if got.Code != "CALC" {
+		t.Fatalf("code=%q want CALC", got.Code)
+	}
+}
+
 func TestLineIntersection(t *testing.T) {
 	got, ok := LineIntersection(
 		Point{Northing: 0, Easting: 0},

@@ -158,6 +158,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, tea.Quit
 		case "enter":
 			return m.executeInput()
+		case "tab":
+			m.completeNextInput()
+			return m, nil
 		case "up":
 			m.previousHistory()
 			return m, nil
@@ -505,7 +508,7 @@ func (m *Model) cycleSort() {
 }
 
 func (m *Model) refreshCompletions() {
-	m.input.SetSuggestions(commandSuggestions(m.project))
+	m.input.SetSuggestions(commandSuggestionsForInput(m.project, m.input.Value()))
 }
 
 func (m *Model) recordHistory(command string) {

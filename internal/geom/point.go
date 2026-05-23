@@ -4,8 +4,8 @@ import "math"
 
 type Point struct {
 	ID          string   `json:"id"`
-	Northing    float64  `json:"northing"`
 	Easting     float64  `json:"easting"`
+	Northing    float64  `json:"northing"`
 	Elevation   *float64 `json:"elevation,omitempty"`
 	Code        string   `json:"code,omitempty"`
 	Description string   `json:"description,omitempty"`
@@ -79,6 +79,12 @@ func Radiate(from Point, azimuth Angle, horizontalDistance float64, elevationDel
 		z = &v
 	}
 	return Point{ID: id, Northing: n, Easting: e, Elevation: z, Code: code}
+}
+
+func Radiate3D(from Point, azimuth Angle, slopeDistance float64, zenith Angle, id, code string) Point {
+	horizontalDistance := slopeDistance * math.Sin(zenith.Radians())
+	elevationDelta := slopeDistance * math.Cos(zenith.Radians())
+	return Radiate(from, azimuth, horizontalDistance, &elevationDelta, id, code)
 }
 
 func Midpoint(a, b Point, id, code string) Point {

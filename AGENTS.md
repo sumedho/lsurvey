@@ -48,7 +48,7 @@ so another UI, such as a web frontend, can be added later.
 - CSV files must use this exact header:
 
 ```text
-id,northing,easting,elevation,code,description
+id,easting,northing,elevation,code,description
 ```
 
 - `pt del` must reject missing points and points referenced by stored lines.
@@ -58,6 +58,8 @@ id,northing,easting,elevation,code,description
 - `line edit` and `pt edit` must support quoted descriptions such as
   `desc="this is a point"`.
 - `offset` must work from either two point IDs or one stored line ID.
+- `rad3d` must use slope distance and zenith angle, with zenith 90° treated as
+  horizontal.
 - `map` should not conflict with `midpoint`; the map shortcut key is `F2`.
 
 ## Contour Rules

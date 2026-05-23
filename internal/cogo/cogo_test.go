@@ -14,6 +14,8 @@ func TestPointAddStoresCode(t *testing.T) {
 		t.Fatal(err)
 	}
 	got := p.Points["1"]
+	close(t, got.Easting, 100)
+	close(t, got.Northing, 200)
 	if got.Code != "PEG" {
 		t.Fatalf("code=%q want PEG", got.Code)
 	}
@@ -22,10 +24,10 @@ func TestPointAddStoresCode(t *testing.T) {
 	}
 }
 
-func TestRadiateCommand(t *testing.T) {
+func TestRadCommand(t *testing.T) {
 	p := project.New("test")
 	mustExec(t, p, "pt add 1 0 0 PEG")
-	if _, err := Execute(p, "radiate 1 90.0000 10 as 2 CALC"); err != nil {
+	if _, err := Execute(p, "rad 1 90.0000 10 as 2 CALC"); err != nil {
 		t.Fatal(err)
 	}
 	got := p.Points["2"]
@@ -36,10 +38,55 @@ func TestRadiateCommand(t *testing.T) {
 	}
 }
 
-func TestRadiateQuadrantBearingCommand(t *testing.T) {
+func TestRadUsesEastingNorthingPointInput(t *testing.T) {
+	p := project.New("test")
+	mustExec(t, p, "pt add 1 177413 446111")
+	mustExec(t, p, "rad 1 12.3015 6235.42 as 2")
+	got := p.Points["2"]
+	close(t, got.Easting, 178763.034597876)
+	close(t, got.Northing, 452198.517487526)
+	if got.Code != "" {
+		t.Fatalf("code=%q want empty", got.Code)
+	}
+}
+
+func TestRad3DCommand(t *testing.T) {
+	p := project.New("test")
+	mustExec(t, p, "pt add 1 100 200 10")
+	mustExec(t, p, "rad3d 1 90.0000 10 90.0000 as 2 CALC")
+	got := p.Points["2"]
+	close(t, got.Easting, 110)
+	close(t, got.Northing, 200)
+	if got.Elevation == nil {
+		t.Fatal("expected elevation")
+	}
+	close(t, *got.Elevation, 10)
+	if got.Code != "CALC" {
+		t.Fatalf("code=%q want CALC", got.Code)
+	}
+}
+
+func TestRad3DCommandAllowsOmittedCode(t *testing.T) {
+	p := project.New("test")
+	mustExec(t, p, "pt add 1 100 200 10")
+	mustExec(t, p, "rad3d 1 90.0000 10 90.0000 as 2")
+	if p.Points["2"].Code != "" {
+		t.Fatalf("code=%q want empty", p.Points["2"].Code)
+	}
+}
+
+func TestRad3DCommandRequiresStartElevation(t *testing.T) {
+	p := project.New("test")
+	mustExec(t, p, "pt add 1 100 200")
+	if _, err := Execute(p, "rad3d 1 90.0000 10 90.0000 as 2"); err == nil {
+		t.Fatal("expected elevation error")
+	}
+}
+
+func TestRadQuadrantBearingCommand(t *testing.T) {
 	p := project.New("test")
 	mustExec(t, p, "pt add 1 0 0")
-	mustExec(t, p, "radiate 1 N 45.0000 E 10 as 2")
+	mustExec(t, p, "rad 1 N 45.0000 E 10 as 2")
 	close(t, p.Points["2"].Northing, math.Sqrt(50))
 	close(t, p.Points["2"].Easting, math.Sqrt(50))
 }
@@ -47,7 +94,7 @@ func TestRadiateQuadrantBearingCommand(t *testing.T) {
 func TestInverseCommand(t *testing.T) {
 	p := project.New("test")
 	mustExec(t, p, "pt add 1 0 0")
-	mustExec(t, p, "pt add 2 0 10")
+	mustExec(t, p, "pt add 2 10 0")
 	got, err := Execute(p, "inverse 1 2")
 	if err != nil {
 		t.Fatal(err)
@@ -102,7 +149,7 @@ func TestMidpointCommand(t *testing.T) {
 func TestOffsetCommandFromTwoPoints(t *testing.T) {
 	p := project.New("test")
 	mustExec(t, p, "pt add 1 0 0")
-	mustExec(t, p, "pt add 2 0 10")
+	mustExec(t, p, "pt add 2 10 0")
 	mustExec(t, p, "offset 1 2 2 5 as 3 OFF")
 	close(t, p.Points["3"].Northing, -2)
 	close(t, p.Points["3"].Easting, 5)
@@ -114,7 +161,7 @@ func TestOffsetCommandFromTwoPoints(t *testing.T) {
 func TestOffsetCommandFromLine(t *testing.T) {
 	p := project.New("test")
 	mustExec(t, p, "pt add 1 0 0")
-	mustExec(t, p, "pt add 2 0 10")
+	mustExec(t, p, "pt add 2 10 0")
 	mustExec(t, p, "line add L1 1 2 BASE")
 	mustExec(t, p, "offset L1 2 5 as 3 OFF")
 	close(t, p.Points["3"].Northing, -2)
@@ -133,6 +180,50 @@ func TestLineIntersectCommand(t *testing.T) {
 	mustExec(t, p, "line intersect 1 2 3 4 as 5 IP")
 	close(t, p.Points["5"].Northing, 5)
 	close(t, p.Points["5"].Easting, 5)
+}
+
+func TestIntersectionCommandsAllowOmittedCode(t *testing.T) {
+	t.Run("line", func(t *testing.T) {
+		p := project.New("test")
+		mustExec(t, p, "pt add 1 0 0")
+		mustExec(t, p, "pt add 2 10 10")
+		mustExec(t, p, "pt add 3 10 0")
+		mustExec(t, p, "pt add 4 0 10")
+		mustExec(t, p, "line intersect 1 2 3 4 as 5")
+		if p.Points["5"].Code != "" {
+			t.Fatalf("code=%q want empty", p.Points["5"].Code)
+		}
+	})
+
+	t.Run("bearing-bearing", func(t *testing.T) {
+		p := project.New("test")
+		mustExec(t, p, "pt add 1 0 0")
+		mustExec(t, p, "pt add 2 10 0")
+		mustExec(t, p, "intersect bearing-bearing 1 45.0000 2 315.0000 as 3")
+		if p.Points["3"].Code != "" {
+			t.Fatalf("code=%q want empty", p.Points["3"].Code)
+		}
+	})
+
+	t.Run("bearing-distance", func(t *testing.T) {
+		p := project.New("test")
+		mustExec(t, p, "pt add 1 0 0")
+		mustExec(t, p, "pt add 2 5 0")
+		mustExec(t, p, "intersect bearing-distance 1 90.0000 2 5 choose far as 3")
+		if p.Points["3"].Code != "" {
+			t.Fatalf("code=%q want empty", p.Points["3"].Code)
+		}
+	})
+
+	t.Run("distance-distance", func(t *testing.T) {
+		p := project.New("test")
+		mustExec(t, p, "pt add 1 0 0")
+		mustExec(t, p, "pt add 2 10 0")
+		mustExec(t, p, "intersect distance-distance 1 10 2 10 choose left as 3")
+		if p.Points["3"].Code != "" {
+			t.Fatalf("code=%q want empty", p.Points["3"].Code)
+		}
+	})
 }
 
 func TestLineEditCommandSupportsQuotedDescription(t *testing.T) {
@@ -192,7 +283,7 @@ func TestPointEditCommandSupportsQuotedDescription(t *testing.T) {
 func TestBearingDistanceCommand(t *testing.T) {
 	p := project.New("test")
 	mustExec(t, p, "pt add 1 0 0")
-	mustExec(t, p, "pt add 2 0 5")
+	mustExec(t, p, "pt add 2 5 0")
 	mustExec(t, p, "intersect bearing-distance 1 90.0000 2 5 choose far as 3 BD")
 	close(t, p.Points["3"].Northing, 0)
 	close(t, p.Points["3"].Easting, 10)
@@ -204,7 +295,7 @@ func TestBearingDistanceCommand(t *testing.T) {
 func TestTraverseCommands(t *testing.T) {
 	p := project.New("test")
 	mustExec(t, p, "pt add 1 0 0")
-	mustExec(t, p, "pt add 99 0 20")
+	mustExec(t, p, "pt add 99 20 0")
 	mustExec(t, p, "trav start 1")
 	mustExec(t, p, "trav leg 90.0000 9 as 2 TRV")
 	mustExec(t, p, "trav leg 90.0000 9 as 3 TRV")
