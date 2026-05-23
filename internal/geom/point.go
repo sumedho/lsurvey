@@ -1,0 +1,179 @@
+package geom
+
+import "math"
+
+type Point struct {
+	ID          string   `json:"id"`
+	Northing    float64  `json:"northing"`
+	Easting     float64  `json:"easting"`
+	Elevation   *float64 `json:"elevation,omitempty"`
+	Code        string   `json:"code,omitempty"`
+	Description string   `json:"description,omitempty"`
+}
+
+type InverseResult struct {
+	Azimuth            Angle
+	HorizontalDistance float64
+	SlopeDistance      *float64
+	DeltaNorthing      float64
+	DeltaEasting       float64
+	DeltaElevation     *float64
+	GradePercent       *float64
+}
+
+type AngleResult struct {
+	Inside  Angle
+	Outside Angle
+}
+
+func Inverse(from, to Point) InverseResult {
+	dn := to.Northing - from.Northing
+	de := to.Easting - from.Easting
+	hd := math.Hypot(dn, de)
+	az := AngleFromRadians(math.Atan2(de, dn))
+	result := InverseResult{
+		Azimuth:            az,
+		HorizontalDistance: hd,
+		DeltaNorthing:      dn,
+		DeltaEasting:       de,
+	}
+	if from.Elevation != nil && to.Elevation != nil {
+		dz := *to.Elevation - *from.Elevation
+		sd := math.Hypot(hd, dz)
+		result.DeltaElevation = &dz
+		result.SlopeDistance = &sd
+		if hd != 0 {
+			grade := dz / hd * 100
+			result.GradePercent = &grade
+		}
+	}
+	return result
+}
+
+func AngleBetween(a, vertex, b Point) (AngleResult, bool) {
+	v1n := a.Northing - vertex.Northing
+	v1e := a.Easting - vertex.Easting
+	v2n := b.Northing - vertex.Northing
+	v2e := b.Easting - vertex.Easting
+	len1 := math.Hypot(v1n, v1e)
+	len2 := math.Hypot(v2n, v2e)
+	if len1 == 0 || len2 == 0 {
+		return AngleResult{}, false
+	}
+	dot := v1n*v2n + v1e*v2e
+	cosTheta := dot / (len1 * len2)
+	cosTheta = math.Max(-1, math.Min(1, cosTheta))
+	insideDeg := math.Acos(cosTheta) * RadToDeg
+	return AngleResult{
+		Inside:  AngleFromDegrees(insideDeg),
+		Outside: AngleFromDegrees(360 - insideDeg),
+	}, true
+}
+
+func Radiate(from Point, azimuth Angle, horizontalDistance float64, elevationDelta *float64, id, code string) Point {
+	n := from.Northing + horizontalDistance*math.Cos(azimuth.Radians())
+	e := from.Easting + horizontalDistance*math.Sin(azimuth.Radians())
+	var z *float64
+	if from.Elevation != nil && elevationDelta != nil {
+		v := *from.Elevation + *elevationDelta
+		z = &v
+	}
+	return Point{ID: id, Northing: n, Easting: e, Elevation: z, Code: code}
+}
+
+func Midpoint(a, b Point, id, code string) Point {
+	p := Point{
+		ID:       id,
+		Northing: (a.Northing + b.Northing) / 2,
+		Easting:  (a.Easting + b.Easting) / 2,
+		Code:     code,
+	}
+	if a.Elevation != nil && b.Elevation != nil {
+		z := (*a.Elevation + *b.Elevation) / 2
+		p.Elevation = &z
+	}
+	return p
+}
+
+func Offset(a, b Point, offset, chainage float64, id, code string) Point {
+	inv := Inverse(a, b)
+	base := Radiate(a, inv.Azimuth, chainage, nil, id, code)
+	return Radiate(base, inv.Azimuth.Add(AngleFromDegrees(90)), offset, nil, id, code)
+}
+
+func LineIntersection(a1, a2, b1, b2 Point, id, code string) (Point, bool) {
+	x1, y1 := a1.Easting, a1.Northing
+	x2, y2 := a2.Easting, a2.Northing
+	x3, y3 := b1.Easting, b1.Northing
+	x4, y4 := b2.Easting, b2.Northing
+	den := (x1-x2)*(y3-y4) - (y1-y2)*(x3-x4)
+	if math.Abs(den) < 1e-12 {
+		return Point{}, false
+	}
+	px := ((x1*y2-y1*x2)*(x3-x4) - (x1-x2)*(x3*y4-y3*x4)) / den
+	py := ((x1*y2-y1*x2)*(y3-y4) - (y1-y2)*(x3*y4-y3*x4)) / den
+	return Point{ID: id, Northing: py, Easting: px, Code: code}, true
+}
+
+func BearingBearingIntersection(p1 Point, az1 Angle, p2 Point, az2 Angle, id, code string) (Point, bool) {
+	a2 := Radiate(p1, az1, 1, nil, "", "")
+	b2 := Radiate(p2, az2, 1, nil, "", "")
+	return LineIntersection(p1, a2, p2, b2, id, code)
+}
+
+func BearingDistanceIntersection(p1 Point, az Angle, center Point, radius float64, choose string, id, code string) (Point, bool) {
+	dn := math.Cos(az.Radians())
+	de := math.Sin(az.Radians())
+	fn := p1.Northing - center.Northing
+	fe := p1.Easting - center.Easting
+	b := 2 * (dn*fn + de*fe)
+	c := fn*fn + fe*fe - radius*radius
+	discriminant := b*b - 4*c
+	if discriminant < -1e-9 {
+		return Point{}, false
+	}
+	if discriminant < 0 {
+		discriminant = 0
+	}
+	root := math.Sqrt(discriminant)
+	t1 := (-b + root) / 2
+	t2 := (-b - root) / 2
+	t := t1
+	if choose == "near" || choose == "left" {
+		if math.Abs(t2) < math.Abs(t1) {
+			t = t2
+		}
+	} else if choose == "far" || choose == "right" {
+		if math.Abs(t2) > math.Abs(t1) {
+			t = t2
+		}
+	}
+	return Radiate(p1, az, t, nil, id, code), true
+}
+
+func DistanceDistanceIntersection(p1 Point, d1 float64, p2 Point, d2 float64, choose string, id, code string) (Point, bool) {
+	d := Inverse(p1, p2).HorizontalDistance
+	if d == 0 || d > d1+d2 || d < math.Abs(d1-d2) {
+		return Point{}, false
+	}
+	a := (d1*d1 - d2*d2 + d*d) / (2 * d)
+	h2 := d1*d1 - a*a
+	if h2 < -1e-9 {
+		return Point{}, false
+	}
+	if h2 < 0 {
+		h2 = 0
+	}
+	h := math.Sqrt(h2)
+	x0, y0 := p1.Easting, p1.Northing
+	x1, y1 := p2.Easting, p2.Northing
+	xm := x0 + a*(x1-x0)/d
+	ym := y0 + a*(y1-y0)/d
+	rx := -(y1 - y0) * (h / d)
+	ry := (x1 - x0) * (h / d)
+	if choose == "right" {
+		rx = -rx
+		ry = -ry
+	}
+	return Point{ID: id, Northing: ym + ry, Easting: xm + rx, Code: code}, true
+}
