@@ -226,6 +226,34 @@ func TestIntersectionCommandsAllowOmittedCode(t *testing.T) {
 	})
 }
 
+func TestResectCommand(t *testing.T) {
+	p := project.New("test")
+	mustExec(t, p, "pt add N 0 10")
+	mustExec(t, p, "pt add E 10 0")
+	mustExec(t, p, "pt add W -10 0")
+	mustExec(t, p, "resect N 0.0000 E 90.0000 W 270.0000 as X RS")
+	got := p.Points["X"]
+	close(t, got.Northing, 0)
+	close(t, got.Easting, 0)
+	if got.Code != "RS" {
+		t.Fatalf("code=%q want RS", got.Code)
+	}
+}
+
+func TestResectCommandAllowsOmittedCode(t *testing.T) {
+	p := project.New("test")
+	mustExec(t, p, "pt add N 0 10")
+	mustExec(t, p, "pt add E 10 0")
+	mustExec(t, p, "pt add W -10 0")
+	mustExec(t, p, "resect N 0.0000 E 90.0000 W 270.0000 as X")
+	got := p.Points["X"]
+	close(t, got.Northing, 0)
+	close(t, got.Easting, 0)
+	if got.Code != "" {
+		t.Fatalf("code=%q want empty", got.Code)
+	}
+}
+
 func TestLineEditCommandSupportsQuotedDescription(t *testing.T) {
 	p := project.New("test")
 	mustExec(t, p, "pt add 1 0 0")
@@ -343,6 +371,32 @@ func TestContourCommands(t *testing.T) {
 	mustExec(t, p, "contour del C1")
 	if len(p.ContourSets) != 0 {
 		t.Fatalf("contour sets=%d want 0", len(p.ContourSets))
+	}
+}
+
+func TestContourGenDefaultsWholeNumberLevelsToIndex(t *testing.T) {
+	p := project.New("test")
+	mustExec(t, p, "pt add 1 0 0 0")
+	mustExec(t, p, "pt add 2 0 10 2")
+	mustExec(t, p, "pt add 3 10 0 2")
+	if _, err := Execute(p, "contour gen C1 0.5 breaklines=none"); err != nil {
+		t.Fatal(err)
+	}
+	var foundMajor, foundMinor bool
+	for _, pl := range p.ContourSets["C1"].Polylines {
+		switch pl.Elevation {
+		case 1:
+			if pl.Index {
+				foundMajor = true
+			}
+		case 1.5:
+			if !pl.Index {
+				foundMinor = true
+			}
+		}
+	}
+	if !foundMajor || !foundMinor {
+		t.Fatalf("contours=%+v want level 1 major and level 1.5 minor", p.ContourSets["C1"].Polylines)
 	}
 }
 

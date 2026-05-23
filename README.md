@@ -133,6 +133,7 @@ exit
 
 Notes:
 
+- `open job` and `open job.srv` both load `job.srv`.
 - `save job` writes `job.srv`.
 - `saveas revised` writes `revised.srv`.
 - `desc Boundary survey Lot 42` updates the description shown in the top bar
@@ -234,6 +235,7 @@ line intersect <a1> <a2> <b1> <b2> as <id> [code]
 intersect bearing-bearing <p1> <brg1> <p2> <brg2> as <id> [code]
 intersect bearing-distance <p1> <brg> <p2> <dist> choose near|far as <id> [code]
 intersect distance-distance <p1> <dist1> <p2> <dist2> choose left|right as <id> [code]
+resect <p1> <brg1> <p2> <brg2> <p3> <brg3> as <id> [code]
 ```
 
 Examples:
@@ -243,7 +245,12 @@ line intersect 1 2 3 4 as 5 IP
 intersect bearing-bearing 1 45.0000 2 315.0000 as 9 IP
 intersect bearing-distance 1 90.0000 2 5 choose far as 3 BD
 intersect distance-distance 1 10 2 10 choose left as 3 DD
+resect 1 0.0000 2 90.0000 3 270.0000 as 4 RS
 ```
+
+`resect` bearings are observed from the new unknown point to each known point.
+The calculation uses the reverse bearing lines from the known points and stores
+a best-fit point from the three lines.
 
 ## Traverse Commands
 
@@ -280,6 +287,7 @@ Examples:
 
 ```text
 contour gen C1 1
+contour gen C1 0.5
 contour gen C1 0.5 base=100 index=5 breaklines=all
 contour gen C2 1 breaklines=ids:B1,B2
 contour info C1
@@ -289,6 +297,12 @@ contour del C1
 Contours are generated from points that have elevations. Points without
 elevations are ignored. At least three elevated, non-collinear points are
 required.
+
+When `index=<n>` is omitted, whole-number contour elevations are stored as
+major/index contours and intermediate elevations are stored as minor contours.
+For example, with interval `0.5`, elevation `18` is major and `18.5` is minor.
+Use `index=<n>` to make every nth contour from the base major, or `index=0` to
+disable major contours.
 
 Stored project lines can be used as breaklines. By default, `contour gen` uses
 all stored lines as breaklines. Use `breaklines=none` to generate contours from
@@ -366,13 +380,13 @@ DXF export writes:
 
 - Point markers.
 - Point labels.
-- Stored lines.
+- Stored lines in pink.
 - Stored contour polylines on `CONTOURS` and `CONTOURS_INDEX` layers.
 - Contour elevation labels on `CONTOUR_LABELS` and `CONTOUR_LABELS_INDEX`
-  layers.
+  layers, placed at the end of each contour line.
 
 Minor contours use AutoCAD color index 8. Index contours use AutoCAD color
-index 1.
+index 1, a heavier DXF lineweight, and a wider polyline width.
 
 ## Angle Input
 

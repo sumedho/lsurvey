@@ -116,3 +116,48 @@ func TestBearingDistanceIntersection(t *testing.T) {
 	assertClose(t, got.Northing, 0)
 	assertClose(t, got.Easting, 0)
 }
+
+func TestResectionByBearings(t *testing.T) {
+	got, ok := ResectionByBearings(
+		[3]Point{
+			{ID: "N", Northing: 10, Easting: 0},
+			{ID: "E", Northing: 0, Easting: 10},
+			{ID: "W", Northing: 0, Easting: -10},
+		},
+		[3]Angle{
+			AngleFromDegrees(0),
+			AngleFromDegrees(90),
+			AngleFromDegrees(270),
+		},
+		"X",
+		"RS",
+	)
+	if !ok {
+		t.Fatal("expected resection")
+	}
+	assertClose(t, got.Northing, 0)
+	assertClose(t, got.Easting, 0)
+	if got.ID != "X" || got.Code != "RS" {
+		t.Fatalf("point=%+v", got)
+	}
+}
+
+func TestResectionByBearingsRejectsDegenerateGeometry(t *testing.T) {
+	_, ok := ResectionByBearings(
+		[3]Point{
+			{Northing: 10, Easting: 0},
+			{Northing: 20, Easting: 0},
+			{Northing: 30, Easting: 0},
+		},
+		[3]Angle{
+			AngleFromDegrees(0),
+			AngleFromDegrees(0),
+			AngleFromDegrees(0),
+		},
+		"X",
+		"",
+	)
+	if ok {
+		t.Fatal("expected degenerate resection rejection")
+	}
+}

@@ -14,12 +14,13 @@ import (
 const eps = 1e-9
 
 type Options struct {
-	ID           string
-	Interval     float64
-	Base         *float64
-	IndexEvery   int
-	BreaklineIDs []string
-	UseBreakline bool
+	ID            string
+	Interval      float64
+	Base          *float64
+	IndexEvery    int
+	IndexEverySet bool
+	BreaklineIDs  []string
+	UseBreakline  bool
 }
 
 type vertex struct {
@@ -185,7 +186,7 @@ func sliceTriangles(points []vertex, tris []triangle, levels levelSet, opts Opti
 			}
 			out = append(out, segment{
 				Level: level,
-				Index: isIndexLevel(level, levels.Base, opts.Interval, opts.IndexEvery),
+				Index: isIndexLevel(level, levels.Base, opts.Interval, opts.IndexEvery, opts.IndexEverySet),
 				A:     pts[0],
 				B:     pts[1],
 			})
@@ -248,11 +249,18 @@ func sameVertex(a, b project.ContourVertex) bool {
 	return math.Abs(a.Easting-b.Easting) <= 1e-7 && math.Abs(a.Northing-b.Northing) <= 1e-7
 }
 
-func isIndexLevel(level, base, interval float64, every int) bool {
+func isIndexLevel(level, base, interval float64, every int, everySet bool) bool {
+	if !everySet {
+		return isWholeNumberLevel(level)
+	}
 	if every <= 0 {
 		return false
 	}
 	step := interval * float64(every)
 	k := math.Round((level - base) / step)
 	return math.Abs(level-(base+k*step)) <= 1e-7
+}
+
+func isWholeNumberLevel(level float64) bool {
+	return math.Abs(level-math.Round(level)) <= 1e-7
 }

@@ -43,6 +43,8 @@ func Execute(p *project.Project, command string) (Result, error) {
 		return execOffset(p, fields)
 	case "intersect":
 		return execIntersect(p, fields)
+	case "resect":
+		return execResect(p, fields)
 	case "trav":
 		return execTraverse(p, fields)
 	case "contour":
@@ -592,6 +594,41 @@ func execIntersect(p *project.Project, f []string) (Result, error) {
 	}
 }
 
+func execResect(p *project.Project, f []string) (Result, error) {
+	if len(f) < 9 {
+		return Result{}, fmt.Errorf("usage: resect <p1> <brg1> <p2> <brg2> <p3> <brg3> as <id> [code]")
+	}
+	var points [3]geom.Point
+	var bearings [3]geom.Angle
+	i := 1
+	for obs := 0; obs < 3; obs++ {
+		if i >= len(f) {
+			return Result{}, fmt.Errorf("usage: resect <p1> <brg1> <p2> <brg2> <p3> <brg3> as <id> [code]")
+		}
+		pt, err := point(p, f[i])
+		if err != nil {
+			return Result{}, err
+		}
+		points[obs] = pt
+		i++
+		az, used, err := parseAngleTokens(f[i:])
+		if err != nil {
+			return Result{}, err
+		}
+		bearings[obs] = az
+		i += used
+	}
+	if i >= len(f) || f[i] != "as" || i+1 >= len(f) {
+		return Result{}, fmt.Errorf("resect requires as <id>")
+	}
+	pt, ok := geom.ResectionByBearings(points, bearings, f[i+1], optional(f, i+2))
+	if !ok {
+		return Result{}, fmt.Errorf("resection bearings are degenerate")
+	}
+	p.Points[pt.ID] = pt
+	return Result{Message: "created point " + pt.ID, Created: []string{"point:" + pt.ID}}, nil
+}
+
 func execTraverse(p *project.Project, f []string) (Result, error) {
 	if len(f) < 2 {
 		return Result{}, fmt.Errorf("trav requires subcommand")
@@ -762,6 +799,7 @@ func execContour(p *project.Project, f []string) (Result, error) {
 					return Result{}, fmt.Errorf("index must be zero or greater")
 				}
 				opts.IndexEvery = n
+				opts.IndexEverySet = true
 			case "breaklines":
 				switch {
 				case v == "all":

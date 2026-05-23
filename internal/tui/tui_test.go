@@ -337,9 +337,12 @@ func TestProjectChangesResetMapState(t *testing.T) {
 
 	m.ExecuteCommand("map lines")
 	m.ExecuteCommand("map zoom in")
-	m.ExecuteCommand("open " + path + ".srv")
+	m.ExecuteCommand("open " + path)
 	if m.lastErr != "" {
 		t.Fatalf("open error: %s", m.lastErr)
+	}
+	if m.path != path+".srv" {
+		t.Fatalf("path=%q want %q", m.path, path+".srv")
 	}
 	if m.mapState.Zoom != 1 || m.mapState.Custom || m.mapState.ShowLines {
 		t.Fatalf("open should reset map state: %+v", m.mapState)

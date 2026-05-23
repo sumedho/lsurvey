@@ -277,13 +277,14 @@ func (m *Model) ExecuteCommand(command string) tea.Cmd {
 			m.setError("usage: open <file>")
 			return nil
 		}
-		loaded, err := project.Load(fields[1])
+		path := paths.Project(fields[1])
+		loaded, err := project.Load(path)
 		if err != nil {
 			m.setError(err.Error())
 			return nil
 		}
 		m.project = loaded
-		m.path = fields[1]
+		m.path = path
 		m.dirty = false
 		m.mapState = newMapState()
 		m.message = "opened " + m.path

@@ -34,6 +34,55 @@ func TestGenerateContoursFromElevatedPoints(t *testing.T) {
 	}
 }
 
+func TestGenerateContoursDefaultsWholeNumberLevelsToIndex(t *testing.T) {
+	p := project.New("test")
+	z0, z2 := 0.0, 2.0
+	p.Points["1"] = geom.Point{ID: "1", Northing: 0, Easting: 0, Elevation: &z0}
+	p.Points["2"] = geom.Point{ID: "2", Northing: 0, Easting: 10, Elevation: &z2}
+	p.Points["3"] = geom.Point{ID: "3", Northing: 10, Easting: 0, Elevation: &z2}
+	set, err := Generate(p, Options{ID: "C1", Interval: 0.5})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	want := map[float64]bool{
+		0.5: false,
+		1.0: true,
+		1.5: false,
+	}
+	for level, index := range want {
+		found := false
+		for _, pl := range set.Polylines {
+			if pl.Elevation == level {
+				found = true
+				if pl.Index != index {
+					t.Fatalf("level %.1f index=%v want %v", level, pl.Index, index)
+				}
+			}
+		}
+		if !found {
+			t.Fatalf("missing level %.1f in %+v", level, set.Polylines)
+		}
+	}
+}
+
+func TestGenerateContoursExplicitIndexZeroDisablesIndexLevels(t *testing.T) {
+	p := project.New("test")
+	z0, z2 := 0.0, 2.0
+	p.Points["1"] = geom.Point{ID: "1", Northing: 0, Easting: 0, Elevation: &z0}
+	p.Points["2"] = geom.Point{ID: "2", Northing: 0, Easting: 10, Elevation: &z2}
+	p.Points["3"] = geom.Point{ID: "3", Northing: 10, Easting: 0, Elevation: &z2}
+	set, err := Generate(p, Options{ID: "C1", Interval: 0.5, IndexEverySet: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, pl := range set.Polylines {
+		if pl.Index {
+			t.Fatalf("level %.1f index=true, want disabled", pl.Elevation)
+		}
+	}
+}
+
 func TestGenerateContoursValidatesBreaklineElevations(t *testing.T) {
 	p := project.New("test")
 	z0, z10 := 0.0, 10.0

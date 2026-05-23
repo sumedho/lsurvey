@@ -157,6 +157,30 @@ func BearingDistanceIntersection(p1 Point, az Angle, center Point, radius float6
 	return Radiate(p1, az, t, nil, id, code), true
 }
 
+func ResectionByBearings(points [3]Point, bearings [3]Angle, id, code string) (Point, bool) {
+	var a00, a01, a11, b0, b1 float64
+	for i, pt := range points {
+		az := bearings[i].Opposite()
+		de := math.Sin(az.Radians())
+		dn := math.Cos(az.Radians())
+		normalE := -dn
+		normalN := de
+		c := normalE*pt.Easting + normalN*pt.Northing
+		a00 += normalE * normalE
+		a01 += normalE * normalN
+		a11 += normalN * normalN
+		b0 += normalE * c
+		b1 += normalN * c
+	}
+	det := a00*a11 - a01*a01
+	if math.Abs(det) < 1e-12 {
+		return Point{}, false
+	}
+	e := (b0*a11 - b1*a01) / det
+	n := (a00*b1 - a01*b0) / det
+	return Point{ID: id, Easting: e, Northing: n, Code: code}, true
+}
+
 func DistanceDistanceIntersection(p1 Point, d1 float64, p2 Point, d2 float64, choose string, id, code string) (Point, bool) {
 	d := Inverse(p1, p2).HorizontalDistance
 	if d == 0 || d > d1+d2 || d < math.Abs(d1-d2) {

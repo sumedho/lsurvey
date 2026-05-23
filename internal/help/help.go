@@ -19,7 +19,7 @@ type Command struct {
 func All() []Command {
 	return []Command{
 		{Group: "Project", Name: "new", Usage: "new <name>", Description: "Create a new in-memory project.", Examples: []string{"new Smith Road"}},
-		{Group: "Project", Name: "open", Usage: "open <file>", Description: "Load a project file.", Examples: []string{"open job.srv"}},
+		{Group: "Project", Name: "open", Usage: "open <file>", Description: "Load a project file. The .srv extension is appended when missing.", Examples: []string{"open job", "open job.srv"}},
 		{Group: "Project", Name: "save", Usage: "save [file]", Description: "Save the current project. The .srv extension is appended when missing.", Examples: []string{"save", "save job"}},
 		{Group: "Project", Name: "saveas", Usage: "saveas <file>", Description: "Save the current project to a new .srv path.", Examples: []string{"saveas revised"}},
 		{Group: "Project", Name: "desc", Usage: "desc <project description>", Description: "Set the project description displayed in the top status bar and saved in the project file.", Examples: []string{"desc Boundary survey Lot 42"}},
@@ -40,6 +40,7 @@ func All() []Command {
 		{Group: "Intersections", Name: "intersect bearing-bearing", Usage: "intersect bearing-bearing <p1> <brg1> <p2> <brg2> as <id> [code]", Description: "Intersect two bearings.", Examples: []string{"intersect bearing-bearing 1 45.0000 2 315.0000 as 9 IP"}},
 		{Group: "Intersections", Name: "intersect bearing-distance", Usage: "intersect bearing-distance <p1> <brg> <p2> <dist> choose near|far as <id> [code]", Description: "Intersect a bearing with a distance circle.", Examples: []string{"intersect bearing-distance 1 90.0000 2 5 choose far as 3 BD"}},
 		{Group: "Intersections", Name: "intersect distance-distance", Usage: "intersect distance-distance <p1> <dist1> <p2> <dist2> choose left|right as <id> [code]", Description: "Intersect two distance circles.", Examples: []string{"intersect distance-distance 1 10 2 10 choose left as 3 DD"}},
+		{Group: "Intersections", Name: "resect", Usage: "resect <p1> <brg1> <p2> <brg2> <p3> <brg3> as <id> [code]", Description: "Create a point from three known points and bearings observed from the new point to those points.", Examples: []string{"resect 1 0.0000 2 90.0000 3 270.0000 as 4 RS"}, Notes: []string{"Bearings are from the unknown point to each known point; the calculation uses the reverse bearing lines from the known points."}},
 		{Group: "Traverse", Name: "trav start", Usage: "trav start <point>", Description: "Start a traverse at a known point.", Examples: []string{"trav start 1"}},
 		{Group: "Traverse", Name: "trav leg", Usage: "trav leg <azimuth|bearing> <distance> [vdiff <delta>] as <id> [code]", Description: "Add a traverse leg from the current traverse point.", Examples: []string{"trav leg 90.0000 25 as 2 TRV"}},
 		{Group: "Traverse", Name: "trav close", Usage: "trav close <known_point>", Description: "Report traverse misclose to a known point.", Examples: []string{"trav close 99"}},

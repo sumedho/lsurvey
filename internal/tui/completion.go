@@ -35,6 +35,7 @@ func commandSuggestions(p *project.Project) []string {
 		add("intersect bearing-bearing " + pt.ID + " <brg1> <p2> <brg2> as " + nextPointID + " [code]")
 		add("intersect bearing-distance " + pt.ID + " <brg> <p2> <dist> choose near|far as " + nextPointID + " [code]")
 		add("intersect distance-distance " + pt.ID + " <dist1> <p2> <dist2> choose left|right as " + nextPointID + " [code]")
+		add("resect " + pt.ID + " <brg1> <p2> <brg2> <p3> <brg3> as " + nextPointID + " [code]")
 		add("pt edit " + pt.ID + " ")
 		add("pt del " + pt.ID)
 		add("pt rename " + pt.ID + " " + nextPointID)

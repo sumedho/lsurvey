@@ -1,0 +1,177 @@
+{
+  "schema_version": 2,
+  "name": "untitled",
+  "description": "Example Resection",
+  "display": {
+    "precision": 3
+  },
+  "units": {
+    "angle": "dd.mmss",
+    "distance": "m"
+  },
+  "points": {
+    "5": {
+      "id": "5",
+      "easting": 289974.6009385865,
+      "northing": 6147753.897660896,
+      "code": "STN",
+      "description": "resected point"
+    },
+    "921": {
+      "id": "921",
+      "easting": 290192.164,
+      "northing": 6147882.102,
+      "description": "bearing=28.1626"
+    },
+    "926": {
+      "id": "926",
+      "easting": 289477.373,
+      "northing": 6147660.737,
+      "description": "bearing=246.4213"
+    },
+    "991": {
+      "id": "991",
+      "easting": 290000.504,
+      "northing": 6147540.603,
+      "description": "bearing=150.4157"
+    }
+  },
+  "lines": {
+    "1": {
+      "id": "1",
+      "from": "5",
+      "to": "921"
+    },
+    "2": {
+      "id": "2",
+      "from": "5",
+      "to": "926"
+    },
+    "3": {
+      "id": "3",
+      "from": "5",
+      "to": "991"
+    }
+  },
+  "history": [
+    {
+      "at": "2026-05-23T10:22:50.750197Z",
+      "command": "pt add 991 290000.504 6147540.603",
+      "result": "added point 991",
+      "created": [
+        "point:991"
+      ]
+    },
+    {
+      "at": "2026-05-23T10:23:10.214399Z",
+      "command": "pt add 926 289477.373 6147660.737",
+      "result": "added point 926",
+      "created": [
+        "point:926"
+      ]
+    },
+    {
+      "at": "2026-05-23T10:23:28.42751Z",
+      "command": "pt add 921 290192.164 6147882.102",
+      "result": "added point 921",
+      "created": [
+        "point:921"
+      ]
+    },
+    {
+      "at": "2026-05-23T10:23:37.711095Z",
+      "command": "resect help",
+      "error": "usage: resect \u003cp1\u003e \u003cbrg1\u003e \u003cp2\u003e \u003cbrg2\u003e \u003cp3\u003e \u003cbrg3\u003e as \u003cid\u003e [code]"
+    },
+    {
+      "at": "2026-05-23T10:24:16.594953Z",
+      "command": "resect 991 150.4157 926 246.4213 921 28.1626 as 5",
+      "error": "usage: resect \u003cp1\u003e \u003cbrg1\u003e \u003cp2\u003e \u003cbrg2\u003e \u003cp3\u003e \u003cbrg3\u003e as \u003cid\u003e [code]"
+    },
+    {
+      "at": "2026-05-23T10:24:25.590204Z",
+      "command": "resect 991 150.4157 926 246.4213 921 28.1626 as 5 st",
+      "result": "created point 5",
+      "created": [
+        "point:5"
+      ]
+    },
+    {
+      "at": "2026-05-23T10:25:38.139975Z",
+      "command": "line add 1 5 921",
+      "result": "added line 1",
+      "created": [
+        "line:1"
+      ]
+    },
+    {
+      "at": "2026-05-23T10:25:47.190304Z",
+      "command": "line add 2 5 926",
+      "result": "added line 2",
+      "created": [
+        "line:2"
+      ]
+    },
+    {
+      "at": "2026-05-23T10:25:58.816692Z",
+      "command": "line add 3 5 991",
+      "result": "added line 3",
+      "created": [
+        "line:3"
+      ]
+    },
+    {
+      "at": "2026-05-23T10:27:45.343373Z",
+      "command": "resect 991 150.4157 926 246.4213 921 28.1626 as 6",
+      "result": "created point 6",
+      "created": [
+        "point:6"
+      ]
+    },
+    {
+      "at": "2026-05-23T10:27:58.917453Z",
+      "command": "pt del 6",
+      "result": "deleted point 6"
+    },
+    {
+      "at": "2026-05-23T10:28:28.511287Z",
+      "command": "pt edit 921 desc=\"150.4157\"",
+      "result": "updated point 921"
+    },
+    {
+      "at": "2026-05-23T10:28:47.476955Z",
+      "command": "pt edit 926 desc=\"246.4213\"",
+      "result": "updated point 926"
+    },
+    {
+      "at": "2026-05-23T10:29:05.128725Z",
+      "command": "pt edit 921 desc=\"28.1626\"",
+      "result": "updated point 921"
+    },
+    {
+      "at": "2026-05-23T10:29:17.489274Z",
+      "command": "pt edit 921 desc=\"bearing=28.1626\"",
+      "result": "updated point 921"
+    },
+    {
+      "at": "2026-05-23T10:29:36.145591Z",
+      "command": "pt edit 991 desc=\"bearing=150.4157\"",
+      "result": "updated point 991"
+    },
+    {
+      "at": "2026-05-23T10:29:56.293898Z",
+      "command": "pt edit 926 desc=\"bearing=246.4213\"",
+      "result": "updated point 926"
+    },
+    {
+      "at": "2026-05-23T10:30:14.802247Z",
+      "command": "pt edit 5 desc=\"resected point\"",
+      "result": "updated point 5"
+    },
+    {
+      "at": "2026-05-23T10:30:48.747026Z",
+      "command": "pt edit 5 code=\"STN\"",
+      "result": "updated point 5"
+    }
+  ]
+}

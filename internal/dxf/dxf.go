@@ -3,7 +3,6 @@ package dxf
 import (
 	"fmt"
 	"io"
-	"math"
 	"strconv"
 	"strings"
 
@@ -11,8 +10,13 @@ import (
 )
 
 const (
+	lineColor          = 6
 	minorContourColor  = 8
 	indexContourColor  = 1
+	minorContourWeight = 5
+	indexContourWeight = 13
+	minorContourWidth  = 0.0
+	indexContourWidth  = 0.1
 	contourLabelHeight = 1.0
 )
 
@@ -21,8 +25,14 @@ func Write(w io.Writer, p *project.Project) error {
 	bw.pair(0, "SECTION")
 	bw.pair(2, "HEADER")
 	bw.pair(9, "$ACADVER")
-	bw.pair(1, "AC1009")
+	bw.pair(1, "AC1015")
 	bw.pair(0, "ENDSEC")
+
+	bw.pair(0, "SECTION")
+	bw.pair(2, "TABLES")
+	writeLayerTable(bw)
+	bw.pair(0, "ENDSEC")
+
 	bw.pair(0, "SECTION")
 	bw.pair(2, "ENTITIES")
 
@@ -61,7 +71,7 @@ func Write(w io.Writer, p *project.Project) error {
 		if to.Elevation != nil {
 			z2 = *to.Elevation
 		}
-		bw.entity("LINE", layer("LINES", line.Code))
+		bw.entityColor("LINE", layer("LINES", line.Code), lineColor)
 		bw.pair(10, from.Easting)
 		bw.pair(20, from.Northing)
 		bw.pair(30, z1)
@@ -75,25 +85,28 @@ func Write(w io.Writer, p *project.Project) error {
 			layerName := "CONTOURS"
 			labelLayer := "CONTOUR_LABELS"
 			color := minorContourColor
+			lineWeight := minorContourWeight
+			width := minorContourWidth
 			if contour.Index {
 				layerName = "CONTOURS_INDEX"
 				labelLayer = "CONTOUR_LABELS_INDEX"
 				color = indexContourColor
+				lineWeight = indexContourWeight
+				width = indexContourWidth
 			}
 			if len(contour.Vertices) < 2 {
 				continue
 			}
-			bw.entityColor("POLYLINE", layerName, color)
-			bw.pair(66, 1)
+			bw.entityColor("LWPOLYLINE", layerName, color)
+			bw.pair(370, lineWeight)
+			bw.pair(90, len(contour.Vertices))
 			bw.pair(70, 0)
-			bw.pair(30, contour.Elevation)
+			bw.pair(38, contour.Elevation)
+			bw.pair(43, width)
 			for _, v := range contour.Vertices {
-				bw.entityColor("VERTEX", layerName, color)
 				bw.pair(10, v.Easting)
 				bw.pair(20, v.Northing)
-				bw.pair(30, contour.Elevation)
 			}
-			bw.pair(0, "SEQEND")
 			if label, ok := contourLabelPoint(contour.Vertices); ok {
 				bw.entityColor("TEXT", labelLayer, color)
 				bw.pair(10, label.Easting)
@@ -108,6 +121,34 @@ func Write(w io.Writer, p *project.Project) error {
 	bw.pair(0, "ENDSEC")
 	bw.pair(0, "EOF")
 	return bw.err
+}
+
+func writeLayerTable(w *writer) {
+	layers := []layerDef{
+		{name: "CONTOURS", color: minorContourColor, lineWeight: minorContourWeight},
+		{name: "CONTOURS_INDEX", color: indexContourColor, lineWeight: indexContourWeight},
+		{name: "CONTOUR_LABELS", color: minorContourColor, lineWeight: minorContourWeight},
+		{name: "CONTOUR_LABELS_INDEX", color: indexContourColor, lineWeight: indexContourWeight},
+	}
+
+	w.pair(0, "TABLE")
+	w.pair(2, "LAYER")
+	w.pair(70, len(layers))
+	for _, layer := range layers {
+		w.pair(0, "LAYER")
+		w.pair(2, layer.name)
+		w.pair(70, 0)
+		w.pair(62, layer.color)
+		w.pair(6, "CONTINUOUS")
+		w.pair(370, layer.lineWeight)
+	}
+	w.pair(0, "ENDTAB")
+}
+
+type layerDef struct {
+	name       string
+	color      int
+	lineWeight int
 }
 
 type writer struct {
@@ -154,34 +195,5 @@ func contourLabelPoint(vertices []project.ContourVertex) (project.ContourVertex,
 	if len(vertices) < 2 {
 		return project.ContourVertex{}, false
 	}
-	total := 0.0
-	for i := 1; i < len(vertices); i++ {
-		total += vertexDistance(vertices[i-1], vertices[i])
-	}
-	if total == 0 {
-		return vertices[0], true
-	}
-	target := total / 2
-	walked := 0.0
-	for i := 1; i < len(vertices); i++ {
-		a := vertices[i-1]
-		b := vertices[i]
-		d := vertexDistance(a, b)
-		if d == 0 {
-			continue
-		}
-		if walked+d >= target {
-			t := (target - walked) / d
-			return project.ContourVertex{
-				Northing: a.Northing + t*(b.Northing-a.Northing),
-				Easting:  a.Easting + t*(b.Easting-a.Easting),
-			}, true
-		}
-		walked += d
-	}
 	return vertices[len(vertices)-1], true
-}
-
-func vertexDistance(a, b project.ContourVertex) float64 {
-	return math.Hypot(b.Easting-a.Easting, b.Northing-a.Northing)
 }

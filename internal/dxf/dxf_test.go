@@ -42,15 +42,27 @@ func TestWriteIncludesPointsLabelsLinesAndCodeLayers(t *testing.T) {
 		"1\n1 PEG\n",
 		"0\nLINE\n",
 		"8\nLINES_BOUNDARY\n",
+		"62\n6\n",
 		"10\n200\n20\n100\n",
-		"0\nPOLYLINE\n",
+		"0\nTABLE\n2\nLAYER\n",
+		"0\nLAYER\n2\nCONTOURS\n70\n0\n62\n8\n6\nCONTINUOUS\n370\n5\n",
+		"0\nLAYER\n2\nCONTOURS_INDEX\n70\n0\n62\n1\n6\nCONTINUOUS\n370\n13\n",
+		"0\nLAYER\n2\nCONTOUR_LABELS\n70\n0\n62\n8\n6\nCONTINUOUS\n370\n5\n",
+		"0\nLAYER\n2\nCONTOUR_LABELS_INDEX\n70\n0\n62\n1\n6\nCONTINUOUS\n370\n13\n",
+		"0\nLWPOLYLINE\n",
 		"8\nCONTOURS\n",
 		"62\n8\n",
+		"370\n5\n",
+		"90\n2\n",
+		"38\n100\n",
+		"43\n0\n",
 		"8\nCONTOUR_LABELS\n",
 		"1\n100\n",
 		"8\nCONTOURS_INDEX\n",
 		"62\n1\n",
-		"0\nVERTEX\n",
+		"370\n13\n",
+		"38\n105\n",
+		"43\n0.1\n",
 		"8\nCONTOUR_LABELS_INDEX\n",
 		"1\n105\n",
 	} {
@@ -60,7 +72,7 @@ func TestWriteIncludesPointsLabelsLinesAndCodeLayers(t *testing.T) {
 	}
 }
 
-func TestContourLabelPointUsesPolylineMidpoint(t *testing.T) {
+func TestContourLabelPointUsesPolylineEnd(t *testing.T) {
 	got, ok := contourLabelPoint([]project.ContourVertex{
 		{Northing: 0, Easting: 0},
 		{Northing: 0, Easting: 10},
@@ -69,7 +81,7 @@ func TestContourLabelPointUsesPolylineMidpoint(t *testing.T) {
 	if !ok {
 		t.Fatal("expected label point")
 	}
-	if got.Northing != 0 || got.Easting != 10 {
-		t.Fatalf("point=%+v want midpoint at bend", got)
+	if got.Northing != 10 || got.Easting != 10 {
+		t.Fatalf("point=%+v want final contour vertex", got)
 	}
 }

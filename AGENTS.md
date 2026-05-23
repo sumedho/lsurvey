@@ -41,6 +41,7 @@ so another UI, such as a web frontend, can be added later.
 ## Command Behavior Expectations
 
 - `save` and `saveas` append `.srv` when missing.
+- `open` accepts project paths with or without `.srv`.
 - `export dxf` appends `.dxf` when missing.
 - `export csv` and `import csv` append `.csv` when missing.
 - CSV import must be atomic: invalid input must not partially mutate the
@@ -58,6 +59,8 @@ id,easting,northing,elevation,code,description
 - `line edit` and `pt edit` must support quoted descriptions such as
   `desc="this is a point"`.
 - `offset` must work from either two point IDs or one stored line ID.
+- `resect` takes three known points and bearings observed from the unknown point
+  to those points, then stores the best-fit point from the reverse bearing lines.
 - `rad3d` must use slope distance and zenith angle, with zenith 90° treated as
   horizontal.
 - `map` should not conflict with `midpoint`; the map shortcut key is `F2`.
@@ -67,6 +70,9 @@ id,easting,northing,elevation,code,description
 - Contours are stored in `Project.ContourSets` and persisted to `.srv`.
 - Contour generation must use only points with elevations.
 - Require at least 3 elevated, non-collinear points.
+- If `index=<n>` is omitted, whole-number contour elevations are major/index
+  contours and intermediate elevations are minor contours.
+- `index=0` disables major/index contours.
 - Default contour breakline behavior is `breaklines=all`.
 - `breaklines=none` must generate from points only.
 - `breaklines=ids:L1,L2` must use only those stored lines.
@@ -74,9 +80,10 @@ id,easting,northing,elevation,code,description
 - Selected breaklines must not cross except at shared endpoints.
 - Editing points or lines does not auto-regenerate stored contours.
 - DXF export must include stored contours as polylines on `CONTOURS` or
-  `CONTOURS_INDEX`, using different ACI colors for minor and index contours.
+  `CONTOURS_INDEX`, using different ACI colors and visibly wider polyline
+  width for index contours.
 - DXF export must add contour elevation text labels on `CONTOUR_LABELS` or
-  `CONTOUR_LABELS_INDEX`.
+  `CONTOUR_LABELS_INDEX` at the end of each contour line.
 - Keep contour geometry tests in `internal/terrain`; keep command behavior tests
   in `internal/cogo`.
 
