@@ -1,5 +1,11 @@
 # lsurvey
 
+Plan fieldwork and compute survey geometry without leaving the terminal.
+`lsurvey` gives land surveyors a fast, keyboard-driven workspace for managing
+points and lines, running everyday COGO commands, checking geometry on an
+ASCII map, and exporting clean project data when the job is ready to leave the
+screen.
+
 `lsurvey` is a terminal coordinate geometry application for land surveying.
 It stores survey projects, manages coded 2D and 3D points, performs common
 COGO calculations, shows an ASCII point map, and exports points and lines.
@@ -7,6 +13,8 @@ COGO calculations, shows an ASCII point map, and exports points and lines.
 The application is written in Go. The calculation engine is separate from the
 Bubble Tea terminal UI so a web UI can be added later without replacing the
 COGO/project code.
+
+![main screen](images/main.png)
 
 For a full beginner walkthrough that covers the command workflow end to end,
 see [TUTORIAL.md](/Users/sumedho/Documents/repos/lsurvey/TUTORIAL.md).
