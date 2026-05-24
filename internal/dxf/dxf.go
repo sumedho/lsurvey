@@ -30,7 +30,7 @@ func Write(w io.Writer, p *project.Project) error {
 	bw.pair(0, "SECTION")
 	bw.pair(2, "HEADER")
 	bw.pair(9, "$ACADVER")
-	bw.pair(1, "AC1015")
+	bw.pair(1, "AC1021")
 	bw.pair(0, "ENDSEC")
 
 	bw.pair(0, "SECTION")
@@ -86,7 +86,7 @@ func Write(w io.Writer, p *project.Project) error {
 		inv := geom.Inverse(from, to)
 		if labels, ok := lineAnnotationLabels(from, to, z1, z2, inv, p.DisplayPrecision()); ok {
 			for _, label := range labels {
-				bw.centeredText("LINE_LABELS", lineLabelColor, label)
+				bw.centeredMText("LINE_LABELS", lineLabelColor, label)
 			}
 		}
 	}
@@ -202,6 +202,22 @@ func (w *writer) centeredText(layer string, color int, label textLabel) {
 	w.pair(31, label.Elevation)
 }
 
+func (w *writer) centeredMText(layer string, color int, label textLabel) {
+	w.entityColor("MTEXT", layer, color)
+	w.pair(10, label.Easting)
+	w.pair(20, label.Northing)
+	w.pair(30, label.Elevation)
+	w.pair(40, label.Height)
+	w.pair(41, math.Max(label.Height, float64(len([]rune(label.Value)))*label.Height))
+	w.pair(71, 5)
+	w.pair(72, 1)
+	w.pair(1, encodeDXFText(label.Value))
+	rotationRad := label.Rotation * math.Pi / 180
+	w.pair(11, math.Cos(rotationRad))
+	w.pair(21, math.Sin(rotationRad))
+	w.pair(31, 0)
+}
+
 func (w *writer) pair(code int, value any) {
 	if w.err != nil {
 		return
@@ -234,6 +250,26 @@ func contourLabelPoint(vertices []project.ContourVertex) (project.ContourVertex,
 	return vertices[len(vertices)-1], true
 }
 
+func encodeDXFText(value string) string {
+	var b strings.Builder
+	for _, r := range value {
+		switch r {
+		case '′':
+			b.WriteByte('\'')
+			continue
+		case '″':
+			b.WriteByte('"')
+			continue
+		}
+		if r >= 32 && r <= 126 {
+			b.WriteRune(r)
+			continue
+		}
+		fmt.Fprintf(&b, "\\U+%04X", r)
+	}
+	return b.String()
+}
+
 func lineAnnotationLabels(from, to geom.Point, z1, z2 float64, inv geom.InverseResult, precision int) ([]textLabel, bool) {
 	if inv.HorizontalDistance == 0 {
 		return nil, false
@@ -262,7 +298,7 @@ func lineAnnotationLabels(from, to geom.Point, z1, z2 float64, inv geom.InverseR
 			Elevation: midZ,
 			Height:    lineLabelHeight,
 			Rotation:  rotation,
-			Value:     inv.Azimuth.FormatCompactDMS(2),
+			Value:     inv.Azimuth.FormatDMS(2),
 		},
 	}, true
 }

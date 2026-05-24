@@ -37,6 +37,7 @@ func TestWriteIncludesPointsLabelsLinesAndCodeLayers(t *testing.T) {
 	}
 	got := out.String()
 	for _, want := range []string{
+		"9\n$ACADVER\n1\nAC1021\n",
 		"0\nPOINT\n",
 		"8\nPOINTS_PEG\n",
 		"0\nTEXT\n",
@@ -68,10 +69,12 @@ func TestWriteIncludesPointsLabelsLinesAndCodeLayers(t *testing.T) {
 		"8\nCONTOUR_LABELS_INDEX\n",
 		"1\n105\n",
 		"8\nLINE_LABELS\n",
+		"0\nMTEXT\n",
 		"1\n14.14\n",
-		"1\n45.000000\n",
-		"50\n45\n",
-		"72\n1\n73\n2\n",
+		"1\n45\\U+00B0" + "00'00.00\"\n",
+		"71\n5\n",
+		"72\n1\n",
+		"11\n0.7071067811865476\n21\n0.7071067811865475\n31\n0\n",
 	} {
 		if !strings.Contains(got, want) {
 			t.Fatalf("DXF missing %q:\n%s", want, got)
@@ -106,7 +109,7 @@ func TestLineAnnotationLabelsPlaceDistanceAndBearingOnOppositeSides(t *testing.T
 	if labels[0].Value != "10.000" {
 		t.Fatalf("distance label=%q want 10.000", labels[0].Value)
 	}
-	if labels[1].Value != "90.000000" {
+	if labels[1].Value != "90°00′00.00″" {
 		t.Fatalf("bearing label=%q", labels[1].Value)
 	}
 	if labels[0].Easting != 5 || labels[1].Easting != 5 {
@@ -117,5 +120,13 @@ func TestLineAnnotationLabelsPlaceDistanceAndBearingOnOppositeSides(t *testing.T
 	}
 	if labels[0].Rotation != 0 || labels[1].Rotation != 0 {
 		t.Fatalf("labels=%+v want 0 degree rotation", labels)
+	}
+}
+
+func TestEncodeDXFTextEscapesUnicodeSymbols(t *testing.T) {
+	got := encodeDXFText("90°00′00.00″")
+	want := "90\\U+00B0" + "00'00.00\""
+	if got != want {
+		t.Fatalf("encoded=%q want %q", got, want)
 	}
 }
