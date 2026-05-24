@@ -10,10 +10,6 @@ screen.
 It stores survey projects, manages coded 2D and 3D points, performs common
 COGO calculations, shows an ASCII point map, and exports points and lines.
 
-The application is written in Go. The calculation engine is separate from the
-Bubble Tea terminal UI so a web UI can be added later without replacing the
-COGO/project code.
-
 ![main screen](images/main.png)
 
 For a full beginner walkthrough that covers the command workflow end to end,
