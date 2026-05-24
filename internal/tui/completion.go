@@ -1,7 +1,6 @@
 package tui
 
 import (
-	"strconv"
 	"strings"
 	"unicode"
 
@@ -20,17 +19,30 @@ func commandSuggestions(p *project.Project) []string {
 		suggestions = append(suggestions, value)
 	}
 
-	nextPointID := nextPointID(p)
+	nextPointID := p.NextPointID()
 	add("pt add " + nextPointID + " <east> <north> [elev] [code]")
-	add("trav leg <azimuth|bearing> <distance> [vdiff <delta>] as " + nextPointID + " [code]")
+	add("close <p1> <p2> <p3> ...")
+	add("bearing add <a> <b>")
+	add("bearing sub <a> <b>")
+	add("dist add <a> <b>")
+	add("dist sub <a> <b>")
+	add("trav leg <azimuth|bearing> <distance> [vdiff <delta>] [code]")
 
 	points := p.SortedPoints()
+	codes := map[string]bool{}
 	for _, pt := range points {
+		if pt.Code != "" && !codes[pt.Code] {
+			add("line gen " + pt.Code)
+			codes[pt.Code] = true
+		}
+		add("close " + pt.ID + " <p2> <p3> ...")
 		add("inverse " + pt.ID + " <to>")
 		add("rad " + pt.ID + " <azimuth|bearing> <distance> [vdiff <delta>] as " + nextPointID + " [code]")
 		add("rad3d " + pt.ID + " <azimuth|bearing> <slope_distance> <zenith> as " + nextPointID + " [code]")
 		add("midpoint " + pt.ID + " <p2> as " + nextPointID + " [code]")
 		add("offset " + pt.ID + " <p2> <offset> <chainage> as " + nextPointID + " [code]")
+		add("shift " + pt.ID + " east=<delta> [north=<delta>] [elev=<delta>]")
+		add("rotate " + pt.ID + " <bearing>")
 		add("line intersect " + pt.ID + " <a2> <b1> <b2> as " + nextPointID + " [code]")
 		add("intersect bearing-bearing " + pt.ID + " <brg1> <p2> <brg2> as " + nextPointID + " [code]")
 		add("intersect bearing-distance " + pt.ID + " <brg> <p2> <dist> choose near|far as " + nextPointID + " [code]")
@@ -73,17 +85,6 @@ func commandSuggestionsForInput(p *project.Project, value string) []string {
 		}
 	}
 	return out
-}
-
-func nextPointID(p *project.Project) string {
-	maxID := 0
-	for id := range p.Points {
-		n, err := strconv.Atoi(id)
-		if err == nil && n > maxID {
-			maxID = n
-		}
-	}
-	return strconv.Itoa(maxID + 1)
 }
 
 func (m *Model) completeNextInput() bool {

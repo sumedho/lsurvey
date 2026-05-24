@@ -50,6 +50,27 @@ func TestAngleBetweenRejectsZeroLengthLeg(t *testing.T) {
 	}
 }
 
+func TestCloseComputesAreaPerimeterAndMisclose(t *testing.T) {
+	got, ok := Close([]Point{
+		{ID: "1", Easting: 0, Northing: 0},
+		{ID: "2", Easting: 4, Northing: 0},
+		{ID: "3", Easting: 4, Northing: 3},
+	})
+	if !ok {
+		t.Fatal("expected close result")
+	}
+	assertClose(t, got.Area, 6)
+	assertClose(t, got.Perimeter, 12)
+	assertClose(t, got.Misclose.HorizontalDistance, 5)
+	assertClose(t, got.Misclose.Azimuth.Degrees(), 233.13010235415598)
+}
+
+func TestCloseRejectsTooFewPoints(t *testing.T) {
+	if _, ok := Close([]Point{{}, {}}); ok {
+		t.Fatal("expected too few points rejection")
+	}
+}
+
 func TestRadiateStoresCode(t *testing.T) {
 	from := Point{Northing: 0, Easting: 0}
 	got := Radiate(from, AngleFromDegrees(90), 10, nil, "2", "PEG")
@@ -160,4 +181,21 @@ func TestResectionByBearingsRejectsDegenerateGeometry(t *testing.T) {
 	if ok {
 		t.Fatal("expected degenerate resection rejection")
 	}
+}
+
+func TestShiftPoint(t *testing.T) {
+	z := 5.0
+	got := ShiftPoint(Point{Easting: 10, Northing: 20, Elevation: &z}, 2, -3, &z)
+	assertClose(t, got.Easting, 12)
+	assertClose(t, got.Northing, 17)
+	if got.Elevation == nil {
+		t.Fatal("expected elevation")
+	}
+	assertClose(t, *got.Elevation, 10)
+}
+
+func TestRotatePoint(t *testing.T) {
+	got := RotatePoint(Point{Easting: 10, Northing: 0}, Point{Easting: 0, Northing: 0}, AngleFromDegrees(90))
+	assertClose(t, got.Easting, 0)
+	assertClose(t, got.Northing, -10)
 }

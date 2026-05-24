@@ -43,3 +43,17 @@ func TestCSVAppendsCSV(t *testing.T) {
 		}
 	}
 }
+
+func TestGeoJSONAppendsGeoJSON(t *testing.T) {
+	tests := map[string]string{
+		"points":         "points.geojson",
+		"points.geojson": "points.geojson",
+		"POINTS.GEOJSON": "POINTS.GEOJSON",
+		"":               "",
+	}
+	for in, want := range tests {
+		if got := GeoJSON(in); got != want {
+			t.Fatalf("GeoJSON(%q)=%q want %q", in, got, want)
+		}
+	}
+}

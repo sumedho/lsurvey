@@ -5,6 +5,7 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/charmbracelet/bubbles/key"
 	"github.com/charmbracelet/bubbles/textinput"
@@ -15,6 +16,7 @@ import (
 	"lsurvey/internal/cogo"
 	"lsurvey/internal/csvpoints"
 	"lsurvey/internal/dxf"
+	"lsurvey/internal/geojson"
 	"lsurvey/internal/help"
 	"lsurvey/internal/paths"
 	"lsurvey/internal/project"
@@ -23,14 +25,20 @@ import (
 type Mode int
 
 const (
-	ModeMain Mode = iota
+	ModeSplash Mode = iota
+	ModeMain
 	ModeHelp
 	ModeMap
 )
 
+const splashDuration = 1500 * time.Millisecond
+
+type splashDoneMsg struct{}
+
 type Model struct {
 	project *project.Project
 	path    string
+	version string
 	dirty   bool
 
 	input    textinput.Model
@@ -53,6 +61,18 @@ type Model struct {
 }
 
 func NewModel(p *project.Project, path string) Model {
+	return newModel(p, path, "dev", false)
+}
+
+func NewModelWithVersion(p *project.Project, path, version string) Model {
+	return newModel(p, path, version, false)
+}
+
+func NewStartupModelWithVersion(p *project.Project, path, version string) Model {
+	return newModel(p, path, version, true)
+}
+
+func newModel(p *project.Project, path, version string, showSplash bool) Model {
 	input := textinput.New()
 	input.Placeholder = "type command, F1/help for commands"
 	input.Focus()
@@ -69,24 +89,36 @@ func NewModel(p *project.Project, path string) Model {
 	m := Model{
 		project:  p,
 		path:     path,
+		version:  version,
 		input:    input,
 		help:     helpView,
+		mode:     ModeMain,
 		sort:     SortID,
 		sortAsc:  true,
 		histIdx:  -1,
 		mapState: newMapState(),
 		message:  "F1 opens help. Tab accepts completions. Use / to filter, alt+s/alt+d to sort.",
 	}
+	if showSplash {
+		m.mode = ModeSplash
+	}
 	m.refreshCompletions()
 	return m
 }
 
 func Run(p *project.Project, path string) error {
-	_, err := tea.NewProgram(NewModel(p, path), tea.WithAltScreen()).Run()
+	return RunWithVersion(p, path, "dev")
+}
+
+func RunWithVersion(p *project.Project, path, version string) error {
+	_, err := tea.NewProgram(NewStartupModelWithVersion(p, path, version), tea.WithAltScreen()).Run()
 	return err
 }
 
 func (m Model) Init() tea.Cmd {
+	if m.mode == ModeSplash {
+		return tea.Batch(textinput.Blink, dismissSplash())
+	}
 	return textinput.Blink
 }
 
@@ -99,7 +131,20 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.help.Width = max(20, msg.Width-8)
 		m.help.Height = max(5, msg.Height-5)
 		return m, nil
+	case splashDoneMsg:
+		if m.mode == ModeSplash {
+			m.mode = ModeMain
+		}
+		return m, nil
 	case tea.KeyMsg:
+		if m.mode == ModeSplash {
+			if msg.String() == "ctrl+c" {
+				m.quitting = true
+				return m, tea.Quit
+			}
+			m.mode = ModeMain
+			return m, nil
+		}
 		if m.mode == ModeHelp {
 			switch msg.String() {
 			case "esc", "f1":
@@ -206,6 +251,9 @@ func (m Model) View() string {
 	if m.quitting {
 		return ""
 	}
+	if m.mode == ModeSplash {
+		return renderSplash(max(60, m.width), max(18, m.height), m.version)
+	}
 	if m.mode == ModeHelp {
 		width := max(60, m.width)
 		height := max(18, m.height)
@@ -244,6 +292,32 @@ func (m Model) View() string {
 		box("Lines", lineTable, width, lineHeight),
 		box("Command", command, width, commandHeight),
 	)
+}
+
+func dismissSplashAfter(delay time.Duration) tea.Cmd {
+	return tea.Tick(delay, func(time.Time) tea.Msg {
+		return splashDoneMsg{}
+	})
+}
+
+func dismissSplash() tea.Cmd {
+	return dismissSplashAfter(splashDuration)
+}
+
+func renderSplash(width, height int, version string) string {
+	width = max(60, width)
+	height = max(18, height)
+	body := lipgloss.JoinVertical(
+		lipgloss.Center,
+		splashTitleStyle.Render("LSurvey"),
+		"",
+		titleStyle.Render("Version "+version),
+		"",
+		mutedStyle.Render("Press any key to continue"),
+	)
+	innerWidth := max(0, width-4)
+	innerHeight := max(1, height-3)
+	return box("LSurvey", lipgloss.Place(innerWidth, innerHeight, lipgloss.Center, lipgloss.Center, body), width, height)
 }
 
 func (m *Model) ExecuteCommand(command string) tea.Cmd {
@@ -317,7 +391,7 @@ func (m *Model) ExecuteCommand(command string) tea.Cmd {
 		m.message = "saved " + m.path
 	case "export":
 		if len(fields) != 3 {
-			m.setError("usage: export dxf|csv <file>")
+			m.setError("usage: export dxf|csv|geojson <file>")
 			return nil
 		}
 		switch fields[1] {
@@ -335,22 +409,43 @@ func (m *Model) ExecuteCommand(command string) tea.Cmd {
 				return nil
 			}
 			m.message = "exported " + path
+		case "geojson":
+			path := paths.GeoJSON(fields[2])
+			if err := geojson.ExportFile(path, m.project); err != nil {
+				m.setError(err.Error())
+				return nil
+			}
+			m.message = "exported " + path
 		default:
-			m.setError("usage: export dxf|csv <file>")
+			m.setError("usage: export dxf|csv|geojson <file>")
 		}
 	case "import":
-		if len(fields) != 3 || fields[1] != "csv" {
-			m.setError("usage: import csv <file>")
+		if len(fields) != 3 {
+			m.setError("usage: import csv|geojson <file>")
 			return nil
 		}
-		path := paths.CSV(fields[2])
-		count, err := csvpoints.ImportFile(path, m.project)
-		if err != nil {
-			m.setError(err.Error())
-			return nil
+		switch fields[1] {
+		case "csv":
+			path := paths.CSV(fields[2])
+			count, err := csvpoints.ImportFile(path, m.project)
+			if err != nil {
+				m.setError(err.Error())
+				return nil
+			}
+			m.dirty = true
+			m.message = fmt.Sprintf("imported %d points from %s", count, path)
+		case "geojson":
+			path := paths.GeoJSON(fields[2])
+			points, lines, err := geojson.ImportFile(path, m.project)
+			if err != nil {
+				m.setError(err.Error())
+				return nil
+			}
+			m.dirty = true
+			m.message = fmt.Sprintf("imported %d points and %d lines from %s", points, lines, path)
+		default:
+			m.setError("usage: import csv|geojson <file>")
 		}
-		m.dirty = true
-		m.message = fmt.Sprintf("imported %d points from %s", count, path)
 	case "desc":
 		description := strings.TrimSpace(strings.TrimPrefix(command, "desc"))
 		if description == "" {
@@ -584,8 +679,16 @@ func (m Model) infoText(visible int) string {
 	if strings.TrimSpace(m.project.Description) != "" {
 		label = m.project.Description
 	}
-	return fmt.Sprintf("%s  path=%s  points=%d/%d  lines=%d  precision=%d  filter=%s  sort=%s %s  %s",
-		label, path, visible, len(m.project.Points), len(m.project.Lines), m.project.DisplayPrecision(), filter, m.sort, m.sortDirection(), dirty)
+	info := fmt.Sprintf("%s  path=%s  points=%d/%d  lines=%d  contours=%d  precision=%d  filter=%s  sort=%s %s  %s",
+		label, path, visible, len(m.project.Points), len(m.project.Lines), len(m.project.ContourSets), m.project.DisplayPrecision(), filter, m.sort, m.sortDirection(), dirty)
+	if m.project.Traverse != nil {
+		traverse := fmt.Sprintf("  trav current=%s next=%s", m.project.Traverse.Current, m.project.NextPointID())
+		if m.project.Traverse.Close != "" {
+			traverse += " close=" + m.project.Traverse.Close
+		}
+		info += traverse
+	}
+	return info
 }
 
 func writeDXF(path string, p *project.Project) error {
@@ -615,10 +718,11 @@ func max(a, b int) int {
 }
 
 var (
-	titleStyle    = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("86"))
-	mutedStyle    = lipgloss.NewStyle().Foreground(lipgloss.Color("245"))
-	errorStyle    = lipgloss.NewStyle().Foreground(lipgloss.Color("196"))
-	tableStyle    = lipgloss.NewStyle()
-	boxTitleStyle = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("86"))
-	boxStyle      = lipgloss.NewStyle().Border(lipgloss.RoundedBorder()).BorderForeground(lipgloss.Color("63")).Padding(0, 1)
+	titleStyle       = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("86"))
+	splashTitleStyle = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("220"))
+	mutedStyle       = lipgloss.NewStyle().Foreground(lipgloss.Color("245"))
+	errorStyle       = lipgloss.NewStyle().Foreground(lipgloss.Color("196"))
+	tableStyle       = lipgloss.NewStyle()
+	boxTitleStyle    = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("86"))
+	boxStyle         = lipgloss.NewStyle().Border(lipgloss.RoundedBorder()).BorderForeground(lipgloss.Color("63")).Padding(0, 1)
 )

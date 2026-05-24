@@ -3,14 +3,17 @@ package dxf
 import (
 	"fmt"
 	"io"
+	"math"
 	"strconv"
 	"strings"
 
+	"lsurvey/internal/geom"
 	"lsurvey/internal/project"
 )
 
 const (
 	lineColor          = 6
+	lineLabelColor     = 3
 	minorContourColor  = 8
 	indexContourColor  = 1
 	minorContourWeight = 5
@@ -18,6 +21,8 @@ const (
 	minorContourWidth  = 0.0
 	indexContourWidth  = 0.1
 	contourLabelHeight = 1.0
+	lineLabelHeight    = 1.0
+	lineLabelOffset    = 1.0
 )
 
 func Write(w io.Writer, p *project.Project) error {
@@ -78,6 +83,12 @@ func Write(w io.Writer, p *project.Project) error {
 		bw.pair(11, to.Easting)
 		bw.pair(21, to.Northing)
 		bw.pair(31, z2)
+		inv := geom.Inverse(from, to)
+		if labels, ok := lineAnnotationLabels(from, to, z1, z2, inv, p.DisplayPrecision()); ok {
+			for _, label := range labels {
+				bw.centeredText("LINE_LABELS", lineLabelColor, label)
+			}
+		}
 	}
 
 	for _, set := range p.SortedContourSets() {
@@ -129,6 +140,7 @@ func writeLayerTable(w *writer) {
 		{name: "CONTOURS_INDEX", color: indexContourColor, lineWeight: indexContourWeight},
 		{name: "CONTOUR_LABELS", color: minorContourColor, lineWeight: minorContourWeight},
 		{name: "CONTOUR_LABELS_INDEX", color: indexContourColor, lineWeight: indexContourWeight},
+		{name: "LINE_LABELS", color: lineLabelColor, lineWeight: 0},
 	}
 
 	w.pair(0, "TABLE")
@@ -156,6 +168,15 @@ type writer struct {
 	err error
 }
 
+type textLabel struct {
+	Easting   float64
+	Northing  float64
+	Elevation float64
+	Height    float64
+	Rotation  float64
+	Value     string
+}
+
 func (w *writer) entity(kind, layer string) {
 	w.pair(0, kind)
 	w.pair(8, layer)
@@ -164,6 +185,21 @@ func (w *writer) entity(kind, layer string) {
 func (w *writer) entityColor(kind, layer string, color int) {
 	w.entity(kind, layer)
 	w.pair(62, color)
+}
+
+func (w *writer) centeredText(layer string, color int, label textLabel) {
+	w.entityColor("TEXT", layer, color)
+	w.pair(10, label.Easting)
+	w.pair(20, label.Northing)
+	w.pair(30, label.Elevation)
+	w.pair(40, label.Height)
+	w.pair(1, label.Value)
+	w.pair(50, label.Rotation)
+	w.pair(72, 1)
+	w.pair(73, 2)
+	w.pair(11, label.Easting)
+	w.pair(21, label.Northing)
+	w.pair(31, label.Elevation)
 }
 
 func (w *writer) pair(code int, value any) {
@@ -196,4 +232,48 @@ func contourLabelPoint(vertices []project.ContourVertex) (project.ContourVertex,
 		return project.ContourVertex{}, false
 	}
 	return vertices[len(vertices)-1], true
+}
+
+func lineAnnotationLabels(from, to geom.Point, z1, z2 float64, inv geom.InverseResult, precision int) ([]textLabel, bool) {
+	if inv.HorizontalDistance == 0 {
+		return nil, false
+	}
+	midE := (from.Easting + to.Easting) / 2
+	midN := (from.Northing + to.Northing) / 2
+	midZ := (z1 + z2) / 2
+
+	perpRad := inv.Azimuth.Add(geom.AngleFromDegrees(90)).Radians()
+	offsetE := math.Sin(perpRad) * lineLabelOffset
+	offsetN := math.Cos(perpRad) * lineLabelOffset
+	rotation := readableTextRotation(inv.Azimuth.Degrees())
+
+	return []textLabel{
+		{
+			Easting:   midE + offsetE,
+			Northing:  midN + offsetN,
+			Elevation: midZ,
+			Height:    lineLabelHeight,
+			Rotation:  rotation,
+			Value:     strconv.FormatFloat(inv.HorizontalDistance, 'f', precision, 64),
+		},
+		{
+			Easting:   midE - offsetE,
+			Northing:  midN - offsetN,
+			Elevation: midZ,
+			Height:    lineLabelHeight,
+			Rotation:  rotation,
+			Value:     inv.Azimuth.FormatCompactDMS(2),
+		},
+	}, true
+}
+
+func readableTextRotation(angleDeg float64) float64 {
+	rotation := math.Mod(90-angleDeg, 360)
+	if rotation < 0 {
+		rotation += 360
+	}
+	if rotation > 90 && rotation < 270 {
+		rotation = math.Mod(rotation+180, 360)
+	}
+	return rotation
 }

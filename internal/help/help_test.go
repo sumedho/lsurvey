@@ -7,7 +7,7 @@ import (
 
 func TestRenderIncludesAngleRuleAndCommands(t *testing.T) {
 	got := Render("")
-	for _, want := range []string{"dd.mmsshhhh", "pt add", "rad", "export dxf", "filter <text>", "desc <project description>"} {
+	for _, want := range []string{"dd.mmsshhhh", "pt add", "rad", "close <p1> <p2> <p3> ...", "bearing add <a> <b>", "dist sub <a> <b>", "shift <base>", "rotate <base>", "line gen <code>", "export dxf", "export geojson", "filter <text>", "desc <project description>"} {
 		if !strings.Contains(got, want) {
 			t.Fatalf("help missing %q:\n%s", want, got)
 		}
@@ -26,7 +26,7 @@ func TestFindCommand(t *testing.T) {
 
 func TestSuggestionsIncludeUsageAndExamples(t *testing.T) {
 	got := strings.Join(Suggestions(), "\n")
-	for _, want := range []string{"rad <from>", "save job"} {
+	for _, want := range []string{"rad <from>", "save job", "trav show", "close 1 2 3", "bearing add <a> <b>", "dist sub 12.5 15", "trav leg <azimuth|bearing> <distance> [vdiff <delta>] [code]", "import geojson <file>", "export geojson <file>", "shift <base> [east=<delta>] [north=<delta>] [elev=<delta>]", "rotate 100 -15.3000", "line gen <code>"} {
 		if !strings.Contains(got, want) {
 			t.Fatalf("suggestions missing %q:\n%s", want, got)
 		}

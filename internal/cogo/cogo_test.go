@@ -5,6 +5,7 @@ import (
 	"strings"
 	"testing"
 
+	"lsurvey/internal/geom"
 	"lsurvey/internal/project"
 )
 
@@ -134,6 +135,147 @@ func TestAngleCommandRejectsZeroLengthLeg(t *testing.T) {
 	}
 }
 
+func TestCloseCommand(t *testing.T) {
+	p := project.New("test")
+	p.SetDisplayPrecision(2)
+	mustExec(t, p, "pt add 1 0 0")
+	mustExec(t, p, "pt add 2 4 0")
+	mustExec(t, p, "pt add 3 4 3")
+	got, err := Execute(p, "close 1 2 3")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{"area=6.00", "misclose az=233°07′48.37″", "hd=5.00", "accuracy=1:2"} {
+		if !strings.Contains(got.Message, want) {
+			t.Fatalf("message=%q missing %q", got.Message, want)
+		}
+	}
+	if len(p.Points) != 3 || len(p.Lines) != 0 || p.Traverse != nil {
+		t.Fatal("close should not mutate project state")
+	}
+}
+
+func TestCloseCommandPerfectClosure(t *testing.T) {
+	p := project.New("test")
+	mustExec(t, p, "pt add 1 0 0")
+	mustExec(t, p, "pt add 2 4 0")
+	mustExec(t, p, "pt add 3 4 3")
+	got, err := Execute(p, "close 1 2 3 1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{"area=6.000", "hd=0.000", "accuracy=perfect"} {
+		if !strings.Contains(got.Message, want) {
+			t.Fatalf("message=%q missing %q", got.Message, want)
+		}
+	}
+}
+
+func TestCloseCommandRejectsInvalidInput(t *testing.T) {
+	p := project.New("test")
+	mustExec(t, p, "pt add 1 0 0")
+	mustExec(t, p, "pt add 2 4 0")
+	if _, err := Execute(p, "close 1 2"); err == nil {
+		t.Fatal("expected usage error")
+	}
+	if _, err := Execute(p, "close 1 2 9"); err == nil {
+		t.Fatal("expected missing point error")
+	}
+}
+
+func TestBearingAddCommandNormalizesResult(t *testing.T) {
+	p := project.New("test")
+	got, err := Execute(p, "bearing add 350.0000 20.0000")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Message != "bearing=10°00′00.00″" {
+		t.Fatalf("message=%q", got.Message)
+	}
+	if len(p.Points) != 0 || len(p.Lines) != 0 {
+		t.Fatal("bearing add should not mutate project")
+	}
+}
+
+func TestBearingSubCommandWrapsNegativeResult(t *testing.T) {
+	p := project.New("test")
+	got, err := Execute(p, "bearing sub 10.0000 20.0000")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Message != "bearing=350°00′00.00″" {
+		t.Fatalf("message=%q", got.Message)
+	}
+}
+
+func TestBearingCommandsAcceptSignedAngles(t *testing.T) {
+	p := project.New("test")
+	got, err := Execute(p, "bearing add -15.3000 30.0000")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Message != "bearing=14°30′00.00″" {
+		t.Fatalf("message=%q", got.Message)
+	}
+
+	got, err = Execute(p, "bearing sub 10d -15.5d")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Message != "bearing=25°30′00.00″" {
+		t.Fatalf("message=%q", got.Message)
+	}
+}
+
+func TestBearingCommandRejectsInvalidInput(t *testing.T) {
+	p := project.New("test")
+	if _, err := Execute(p, "bearing add 10.0000"); err == nil {
+		t.Fatal("expected usage error")
+	}
+	if _, err := Execute(p, "bearing add N 45.0000"); err == nil {
+		t.Fatal("expected invalid angle error")
+	}
+	if _, err := Execute(p, "bearing mul 10.0000 20.0000"); err == nil {
+		t.Fatal("expected subcommand error")
+	}
+}
+
+func TestDistanceCommandsUseDisplayPrecisionWithoutMutation(t *testing.T) {
+	p := project.New("test")
+	p.SetDisplayPrecision(2)
+	got, err := Execute(p, "dist add 12.5 3.125")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Message != "dist=15.62" {
+		t.Fatalf("message=%q", got.Message)
+	}
+
+	got, err = Execute(p, "dist sub 12.5 15")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Message != "dist=-2.50" {
+		t.Fatalf("message=%q", got.Message)
+	}
+	if len(p.Points) != 0 || len(p.Lines) != 0 {
+		t.Fatal("dist commands should not mutate project")
+	}
+}
+
+func TestDistanceCommandRejectsInvalidInput(t *testing.T) {
+	p := project.New("test")
+	if _, err := Execute(p, "dist add 10"); err == nil {
+		t.Fatal("expected usage error")
+	}
+	if _, err := Execute(p, "dist add ten 5"); err == nil {
+		t.Fatal("expected invalid distance error")
+	}
+	if _, err := Execute(p, "dist mul 10 5"); err == nil {
+		t.Fatal("expected subcommand error")
+	}
+}
+
 func TestMidpointCommand(t *testing.T) {
 	p := project.New("test")
 	mustExec(t, p, "pt add 1 0 0")
@@ -254,6 +396,82 @@ func TestResectCommandAllowsOmittedCode(t *testing.T) {
 	}
 }
 
+func TestShiftCommand(t *testing.T) {
+	p := project.New("test")
+	z := 5.0
+	p.Points["1"] = geom.Point{ID: "1", Easting: 0, Northing: 0, Elevation: &z}
+	p.Points["2"] = geom.Point{ID: "2", Easting: 10, Northing: 10}
+	p.ContourSets["C1"] = project.ContourSet{
+		ID: "C1",
+		Polylines: []project.ContourPolyline{{
+			ID:        "C1-1",
+			Elevation: 100,
+			Vertices:  []project.ContourVertex{{Easting: 1, Northing: 2}, {Easting: 3, Northing: 4}},
+		}},
+	}
+	mustExec(t, p, "shift 1 east=2 north=-3 elev=1.5")
+	close(t, p.Points["1"].Easting, 2)
+	close(t, p.Points["1"].Northing, -3)
+	close(t, *p.Points["1"].Elevation, 6.5)
+	close(t, p.Points["2"].Easting, 12)
+	close(t, p.Points["2"].Northing, 7)
+	if p.Points["2"].Elevation != nil {
+		t.Fatalf("2D point gained elevation: %+v", p.Points["2"])
+	}
+	close(t, p.ContourSets["C1"].Polylines[0].Vertices[0].Easting, 3)
+	close(t, p.ContourSets["C1"].Polylines[0].Vertices[0].Northing, -1)
+	close(t, p.ContourSets["C1"].Polylines[0].Elevation, 101.5)
+}
+
+func TestShiftCommandRejectsMissingAxes(t *testing.T) {
+	p := project.New("test")
+	mustExec(t, p, "pt add 1 0 0")
+	if _, err := Execute(p, "shift 1"); err == nil {
+		t.Fatal("expected shift usage error")
+	}
+}
+
+func TestRotateCommand(t *testing.T) {
+	p := project.New("test")
+	z := 5.0
+	p.Points["1"] = geom.Point{ID: "1", Easting: 0, Northing: 0, Elevation: &z}
+	p.Points["2"] = geom.Point{ID: "2", Easting: 10, Northing: 0}
+	p.ContourSets["C1"] = project.ContourSet{
+		ID: "C1",
+		Polylines: []project.ContourPolyline{{
+			ID:        "C1-1",
+			Elevation: 100,
+			Vertices:  []project.ContourVertex{{Easting: 10, Northing: 0}},
+		}},
+	}
+	mustExec(t, p, "rotate 1 90.0000")
+	close(t, p.Points["1"].Easting, 0)
+	close(t, p.Points["1"].Northing, 0)
+	close(t, p.Points["2"].Easting, 0)
+	close(t, p.Points["2"].Northing, -10)
+	close(t, *p.Points["1"].Elevation, 5)
+	close(t, p.ContourSets["C1"].Polylines[0].Vertices[0].Easting, 0)
+	close(t, p.ContourSets["C1"].Polylines[0].Vertices[0].Northing, -10)
+	close(t, p.ContourSets["C1"].Polylines[0].Elevation, 100)
+}
+
+func TestRotateCommandSupportsNegativeAngle(t *testing.T) {
+	p := project.New("test")
+	mustExec(t, p, "pt add 1 0 0")
+	mustExec(t, p, "pt add 2 10 0")
+	mustExec(t, p, "rotate 1 -90.0000")
+	close(t, p.Points["2"].Easting, 0)
+	close(t, p.Points["2"].Northing, 10)
+}
+
+func TestRotateCommandRejectsQuadrantBearing(t *testing.T) {
+	p := project.New("test")
+	mustExec(t, p, "pt add 1 0 0")
+	if _, err := Execute(p, "rotate 1 N 45.0000 E"); err == nil {
+		t.Fatal("expected rotate angle error")
+	}
+}
+
 func TestLineEditCommandSupportsQuotedDescription(t *testing.T) {
 	p := project.New("test")
 	mustExec(t, p, "pt add 1 0 0")
@@ -299,6 +517,61 @@ func TestLineAddAndDeleteValidateExistingIDs(t *testing.T) {
 	}
 }
 
+func TestLineGenCreatesSequentialLinesForCode(t *testing.T) {
+	p := project.New("test")
+	mustExec(t, p, "pt add 1 0 0 PEG")
+	mustExec(t, p, "pt add 2 10 0 TREE")
+	mustExec(t, p, "pt add 3 20 0 PEG")
+	mustExec(t, p, "pt add 4 30 0 PEG")
+
+	got, err := Execute(p, "line gen PEG")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(got.Message, "generated 2 lines for code PEG") {
+		t.Fatalf("message=%q", got.Message)
+	}
+	if len(got.Created) != 2 {
+		t.Fatalf("created=%v want 2 lines", got.Created)
+	}
+	if line := p.Lines["L1"]; line.From != "1" || line.To != "3" || line.Code != "PEG" || line.Description != "" {
+		t.Fatalf("line L1=%+v", line)
+	}
+	if line := p.Lines["L2"]; line.From != "3" || line.To != "4" || line.Code != "PEG" || line.Description != "" {
+		t.Fatalf("line L2=%+v", line)
+	}
+}
+
+func TestLineGenSkipsExistingUndirectedPairs(t *testing.T) {
+	p := project.New("test")
+	mustExec(t, p, "pt add 1 0 0 PEG")
+	mustExec(t, p, "pt add 2 10 0 PEG")
+	mustExec(t, p, "pt add 3 20 0 PEG")
+	mustExec(t, p, "line add L9 2 1 PEG")
+
+	got, err := Execute(p, "line gen PEG")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(got.Message, "generated 1 lines") || !strings.Contains(got.Message, "skipped 1 duplicates") {
+		t.Fatalf("message=%q", got.Message)
+	}
+	if _, ok := p.Lines["L10"]; !ok {
+		t.Fatalf("lines=%+v want generated L10", p.Lines)
+	}
+	if line := p.Lines["L10"]; line.From != "2" || line.To != "3" {
+		t.Fatalf("line L10=%+v", line)
+	}
+}
+
+func TestLineGenRequiresAtLeastTwoMatchingPoints(t *testing.T) {
+	p := project.New("test")
+	mustExec(t, p, "pt add 1 0 0 PEG")
+	if _, err := Execute(p, "line gen PEG"); err == nil {
+		t.Fatal("expected insufficient points error")
+	}
+}
+
 func TestPointEditCommandSupportsQuotedDescription(t *testing.T) {
 	p := project.New("test")
 	mustExec(t, p, "pt add 1 0 0 PEG")
@@ -325,8 +598,8 @@ func TestTraverseCommands(t *testing.T) {
 	mustExec(t, p, "pt add 1 0 0")
 	mustExec(t, p, "pt add 99 20 0")
 	mustExec(t, p, "trav start 1")
-	mustExec(t, p, "trav leg 90.0000 9 as 2 TRV")
-	mustExec(t, p, "trav leg 90.0000 9 as 3 TRV")
+	mustExec(t, p, "trav leg 90.0000 9 TRV")
+	mustExec(t, p, "trav leg 90.0000 9 TRV")
 	result, err := Execute(p, "trav close 99")
 	if err != nil {
 		t.Fatal(err)
@@ -335,8 +608,43 @@ func TestTraverseCommands(t *testing.T) {
 		t.Fatalf("message=%q", result.Message)
 	}
 	mustExec(t, p, "trav adjust compass")
-	close(t, p.Points["2"].Easting, 10)
-	close(t, p.Points["3"].Easting, 20)
+	close(t, p.Points["100"].Easting, 10)
+	close(t, p.Points["101"].Easting, 20)
+}
+
+func TestTraverseShowAndRestart(t *testing.T) {
+	p := project.New("test")
+	mustExec(t, p, "pt add 10 0 0")
+	mustExec(t, p, "pt add 12 20 0")
+	mustExec(t, p, "trav start 10")
+	result, err := Execute(p, "trav show")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{"start=10", "current=10", "legs=0", "next=13"} {
+		if !strings.Contains(result.Message, want) {
+			t.Fatalf("message=%q missing %q", result.Message, want)
+		}
+	}
+	mustExec(t, p, "trav leg 90.0000 5")
+	if _, ok := p.Points["13"]; !ok {
+		t.Fatal("expected auto-created traverse point 13")
+	}
+	if p.Traverse.Current != "13" {
+		t.Fatalf("current=%q want 13", p.Traverse.Current)
+	}
+	mustExec(t, p, "trav close 12")
+	result, err = Execute(p, "trav show")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(result.Message, "close=12") {
+		t.Fatalf("message=%q missing close point", result.Message)
+	}
+	mustExec(t, p, "trav start 12")
+	if p.Traverse.Current != "12" || p.Traverse.Close != "" || len(p.Traverse.LegPointIDs) != 0 {
+		t.Fatalf("traverse=%+v want reset state", p.Traverse)
+	}
 }
 
 func TestContourCommands(t *testing.T) {
@@ -367,6 +675,15 @@ func TestContourCommands(t *testing.T) {
 	}
 	if !strings.Contains(got.Message, "polylines=") {
 		t.Fatalf("message=%q", got.Message)
+	}
+	got, err = Execute(p, "contour list")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{"1 contour sets", "C1", "interval=5.000", "base=0.000", "polylines=", "breaklines=0", "index=2"} {
+		if !strings.Contains(got.Message, want) {
+			t.Fatalf("message=%q missing %q", got.Message, want)
+		}
 	}
 	mustExec(t, p, "contour del C1")
 	if len(p.ContourSets) != 0 {

@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"sort"
+	"strconv"
 	"time"
 
 	"lsurvey/internal/geom"
@@ -139,6 +140,31 @@ func (p *Project) SortedLines() []Line {
 	}
 	sort.Slice(lines, func(i, j int) bool { return lines[i].ID < lines[j].ID })
 	return lines
+}
+
+func (p *Project) NextPointID() string {
+	maxID := 0
+	for id := range p.Points {
+		n, err := strconv.Atoi(id)
+		if err == nil && n > maxID {
+			maxID = n
+		}
+	}
+	return strconv.Itoa(maxID + 1)
+}
+
+func (p *Project) NextLineID() string {
+	maxID := 0
+	for id := range p.Lines {
+		if len(id) < 2 || id[0] != 'L' {
+			continue
+		}
+		n, err := strconv.Atoi(id[1:])
+		if err == nil && n > maxID {
+			maxID = n
+		}
+	}
+	return fmt.Sprintf("L%d", maxID+1)
 }
 
 func (p *Project) ensure() {

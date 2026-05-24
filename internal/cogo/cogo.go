@@ -33,6 +33,12 @@ func Execute(p *project.Project, command string) (Result, error) {
 		return execInverse(p, fields)
 	case "angle":
 		return execAngle(p, fields)
+	case "close":
+		return execClose(p, fields)
+	case "bearing":
+		return execBearing(p, fields)
+	case "dist":
+		return execDistance(p, fields)
 	case "rad":
 		return execRad(p, fields)
 	case "rad3d":
@@ -45,6 +51,10 @@ func Execute(p *project.Project, command string) (Result, error) {
 		return execIntersect(p, fields)
 	case "resect":
 		return execResect(p, fields)
+	case "shift":
+		return execShift(p, fields)
+	case "rotate":
+		return execRotate(p, fields)
 	case "trav":
 		return execTraverse(p, fields)
 	case "contour":
@@ -210,6 +220,11 @@ func execLine(p *project.Project, f []string) (Result, error) {
 		}
 		p.Lines[f[2]] = project.Line{ID: f[2], From: f[3], To: f[4], Code: code}
 		return Result{Message: "added line " + f[2], Created: []string{"line:" + f[2]}}, nil
+	case "gen":
+		if len(f) != 3 {
+			return Result{}, fmt.Errorf("usage: line gen <code>")
+		}
+		return genLinesByCode(p, f[2])
 	case "del":
 		if len(f) != 3 {
 			return Result{}, fmt.Errorf("usage: line del <id>")
@@ -288,6 +303,46 @@ func execLine(p *project.Project, f []string) (Result, error) {
 	}
 }
 
+func genLinesByCode(p *project.Project, code string) (Result, error) {
+	points := p.SortedPoints()
+	matching := make([]geom.Point, 0, len(points))
+	for _, pt := range points {
+		if pt.Code == code {
+			matching = append(matching, pt)
+		}
+	}
+	if len(matching) < 2 {
+		return Result{}, fmt.Errorf("line gen requires at least 2 points with code %q", code)
+	}
+
+	created := make([]string, 0, len(matching)-1)
+	skipped := 0
+	for i := 0; i < len(matching)-1; i++ {
+		from := matching[i].ID
+		to := matching[i+1].ID
+		if hasLineBetween(p, from, to) {
+			skipped++
+			continue
+		}
+		id := p.NextLineID()
+		p.Lines[id] = project.Line{ID: id, From: from, To: to, Code: code}
+		created = append(created, "line:"+id)
+	}
+	return Result{
+		Message: fmt.Sprintf("generated %d lines for code %s, skipped %d duplicates", len(created), code, skipped),
+		Created: created,
+	}, nil
+}
+
+func hasLineBetween(p *project.Project, a, b string) bool {
+	for _, line := range p.Lines {
+		if (line.From == a && line.To == b) || (line.From == b && line.To == a) {
+			return true
+		}
+	}
+	return false
+}
+
 func execInverse(p *project.Project, f []string) (Result, error) {
 	if len(f) != 3 {
 		return Result{}, fmt.Errorf("usage: inverse <from> <to>")
@@ -330,6 +385,85 @@ func execAngle(p *project.Project, f []string) (Result, error) {
 		return Result{}, fmt.Errorf("angle legs must have non-zero length")
 	}
 	return Result{Message: fmt.Sprintf("inside=%s outside=%s", result.Inside.FormatDMS(2), result.Outside.FormatDMS(2))}, nil
+}
+
+func execClose(p *project.Project, f []string) (Result, error) {
+	if len(f) < 4 {
+		return Result{}, fmt.Errorf("usage: close <p1> <p2> <p3> ...")
+	}
+	points := make([]geom.Point, 0, len(f)-1)
+	for _, id := range f[1:] {
+		pt, err := point(p, id)
+		if err != nil {
+			return Result{}, err
+		}
+		points = append(points, pt)
+	}
+	result, ok := geom.Close(points)
+	if !ok {
+		return Result{}, fmt.Errorf("close requires at least 3 points")
+	}
+	accuracy := "perfect"
+	if result.Misclose.HorizontalDistance > 0 {
+		accuracy = fmt.Sprintf("1:%.0f", result.Perimeter/result.Misclose.HorizontalDistance)
+	}
+	return Result{
+		Message: fmt.Sprintf(
+			"area=%s misclose az=%s hd=%s accuracy=%s",
+			formatDistance(result.Area, p.DisplayPrecision()),
+			result.Misclose.Azimuth.FormatDMS(2),
+			formatDistance(result.Misclose.HorizontalDistance, p.DisplayPrecision()),
+			accuracy,
+		),
+	}, nil
+}
+
+func execBearing(_ *project.Project, f []string) (Result, error) {
+	if len(f) != 4 {
+		return Result{}, fmt.Errorf("usage: bearing add|sub <a> <b>")
+	}
+	a, err := geom.ParseAngle(f[2])
+	if err != nil {
+		return Result{}, err
+	}
+	b, err := geom.ParseAngle(f[3])
+	if err != nil {
+		return Result{}, err
+	}
+	var result geom.Angle
+	switch f[1] {
+	case "add":
+		result = geom.AngleFromDegrees(a.Degrees() + b.Degrees())
+	case "sub":
+		result = geom.AngleFromDegrees(a.Degrees() - b.Degrees())
+	default:
+		return Result{}, fmt.Errorf("unknown bearing subcommand %q", f[1])
+	}
+	return Result{Message: "bearing=" + result.FormatDMS(2)}, nil
+}
+
+func execDistance(p *project.Project, f []string) (Result, error) {
+	if len(f) != 4 {
+		return Result{}, fmt.Errorf("usage: dist add|sub <a> <b>")
+	}
+	a, err := parseFloat("distance", f[2])
+	if err != nil {
+		return Result{}, err
+	}
+	b, err := parseFloat("distance", f[3])
+	if err != nil {
+		return Result{}, err
+	}
+	var result float64
+	switch f[1] {
+	case "add":
+		result = a + b
+	case "sub":
+		result = a - b
+	default:
+		return Result{}, fmt.Errorf("unknown dist subcommand %q", f[1])
+	}
+	return Result{Message: "dist=" + formatDistance(result, p.DisplayPrecision())}, nil
 }
 
 func execRad(p *project.Project, f []string) (Result, error) {
@@ -629,6 +763,109 @@ func execResect(p *project.Project, f []string) (Result, error) {
 	return Result{Message: "created point " + pt.ID, Created: []string{"point:" + pt.ID}}, nil
 }
 
+func execShift(p *project.Project, f []string) (Result, error) {
+	if len(f) < 3 {
+		return Result{}, fmt.Errorf("usage: shift <base> [east=<delta>] [north=<delta>] [elev=<delta>]")
+	}
+	if _, err := point(p, f[1]); err != nil {
+		return Result{}, err
+	}
+	var (
+		deltaE   float64
+		deltaN   float64
+		deltaZ   *float64
+		haveAxis bool
+	)
+	for _, arg := range f[2:] {
+		k, v, ok := strings.Cut(arg, "=")
+		if !ok {
+			return Result{}, fmt.Errorf("shift argument %q must be key=value", arg)
+		}
+		switch k {
+		case "east", "e", "easting", "x":
+			x, err := parseFloat(k, v)
+			if err != nil {
+				return Result{}, err
+			}
+			deltaE = x
+			haveAxis = true
+		case "north", "n", "northing", "y":
+			x, err := parseFloat(k, v)
+			if err != nil {
+				return Result{}, err
+			}
+			deltaN = x
+			haveAxis = true
+		case "elev", "z":
+			x, err := parseFloat(k, v)
+			if err != nil {
+				return Result{}, err
+			}
+			deltaZ = &x
+			haveAxis = true
+		default:
+			return Result{}, fmt.Errorf("unknown shift field %q", k)
+		}
+	}
+	if !haveAxis {
+		return Result{}, fmt.Errorf("shift requires at least one of east=, north=, or elev=")
+	}
+	updated := make([]string, 0, len(p.Points)+len(p.ContourSets))
+	for id, pt := range p.Points {
+		p.Points[id] = geom.ShiftPoint(pt, deltaE, deltaN, deltaZ)
+		updated = append(updated, "point:"+id)
+	}
+	for id, set := range p.ContourSets {
+		for polyIdx := range set.Polylines {
+			if deltaZ != nil {
+				set.Polylines[polyIdx].Elevation += *deltaZ
+			}
+			for vertexIdx := range set.Polylines[polyIdx].Vertices {
+				set.Polylines[polyIdx].Vertices[vertexIdx].Easting += deltaE
+				set.Polylines[polyIdx].Vertices[vertexIdx].Northing += deltaN
+			}
+		}
+		p.ContourSets[id] = set
+		updated = append(updated, "contour:"+id)
+	}
+	return Result{Message: fmt.Sprintf("shifted %d points", len(p.Points)), Updated: updated}, nil
+}
+
+func execRotate(p *project.Project, f []string) (Result, error) {
+	if len(f) != 3 {
+		return Result{}, fmt.Errorf("usage: rotate <base> <bearing>")
+	}
+	base, err := point(p, f[1])
+	if err != nil {
+		return Result{}, err
+	}
+	angle, err := geom.ParseAngle(f[2])
+	if err != nil {
+		return Result{}, err
+	}
+	updated := make([]string, 0, len(p.Points)+len(p.ContourSets))
+	for id, pt := range p.Points {
+		p.Points[id] = geom.RotatePoint(pt, base, angle)
+		updated = append(updated, "point:"+id)
+	}
+	for id, set := range p.ContourSets {
+		for polyIdx := range set.Polylines {
+			for vertexIdx := range set.Polylines[polyIdx].Vertices {
+				pt := geom.Point{
+					Easting:  set.Polylines[polyIdx].Vertices[vertexIdx].Easting,
+					Northing: set.Polylines[polyIdx].Vertices[vertexIdx].Northing,
+				}
+				pt = geom.RotatePoint(pt, base, angle)
+				set.Polylines[polyIdx].Vertices[vertexIdx].Easting = pt.Easting
+				set.Polylines[polyIdx].Vertices[vertexIdx].Northing = pt.Northing
+			}
+		}
+		p.ContourSets[id] = set
+		updated = append(updated, "contour:"+id)
+	}
+	return Result{Message: fmt.Sprintf("rotated %d points by %s", len(p.Points), f[2]), Updated: updated}, nil
+}
+
 func execTraverse(p *project.Project, f []string) (Result, error) {
 	if len(f) < 2 {
 		return Result{}, fmt.Errorf("trav requires subcommand")
@@ -647,8 +884,8 @@ func execTraverse(p *project.Project, f []string) (Result, error) {
 		if p.Traverse == nil {
 			return Result{}, fmt.Errorf("no active traverse")
 		}
-		if len(f) < 7 {
-			return Result{}, fmt.Errorf("usage: trav leg <azimuth|bearing> <distance> [vdiff <delta>] as <id> [code]")
+		if len(f) < 4 {
+			return Result{}, fmt.Errorf("usage: trav leg <azimuth|bearing> <distance> [vdiff <delta>] [code]")
 		}
 		from, err := point(p, p.Traverse.Current)
 		if err != nil {
@@ -676,15 +913,14 @@ func execTraverse(p *project.Project, f []string) (Result, error) {
 			dz = &v
 			i += 2
 		}
-		if i >= len(f) || f[i] != "as" || i+1 >= len(f) {
-			return Result{}, fmt.Errorf("trav leg requires as <id>")
-		}
-		id := f[i+1]
-		pt := geom.Radiate(from, az, dist, dz, id, optional(f, i+2))
+		code := optional(f, i)
+		id := p.NextPointID()
+		pt := geom.Radiate(from, az, dist, dz, id, code)
 		p.Points[id] = pt
 		p.Traverse.Current = id
+		p.Traverse.Close = ""
 		p.Traverse.LegPointIDs = append(p.Traverse.LegPointIDs, id)
-		return Result{Message: "created traverse point " + id, Created: []string{"point:" + id}}, nil
+		return Result{Message: "created traverse point " + id + " current=" + p.Traverse.Current, Created: []string{"point:" + id}}, nil
 	case "close":
 		if p.Traverse == nil {
 			return Result{}, fmt.Errorf("no active traverse")
@@ -703,6 +939,15 @@ func execTraverse(p *project.Project, f []string) (Result, error) {
 		p.Traverse.Close = f[2]
 		misclose := geom.Inverse(current, known)
 		return Result{Message: fmt.Sprintf("misclose az=%s hd=%s", misclose.Azimuth.FormatDMS(2), formatDistance(misclose.HorizontalDistance, p.DisplayPrecision()))}, nil
+	case "show":
+		if p.Traverse == nil {
+			return Result{}, fmt.Errorf("no active traverse")
+		}
+		message := fmt.Sprintf("traverse start=%s current=%s legs=%d next=%s", p.Traverse.Start, p.Traverse.Current, len(p.Traverse.LegPointIDs), p.NextPointID())
+		if p.Traverse.Close != "" {
+			message += " close=" + p.Traverse.Close
+		}
+		return Result{Message: message}, nil
 	case "adjust":
 		if p.Traverse == nil || p.Traverse.Close == "" {
 			return Result{}, fmt.Errorf("traverse must be closed before adjustment")
@@ -836,7 +1081,22 @@ func execContour(p *project.Project, f []string) (Result, error) {
 		}
 		return Result{Message: fmt.Sprintf("generated contour set %s with %d polylines", set.ID, len(set.Polylines)), Created: []string{"contour:" + set.ID}}, nil
 	case "list":
-		return Result{Message: fmt.Sprintf("%d contour sets", len(p.ContourSets))}, nil
+		if len(p.ContourSets) == 0 {
+			return Result{Message: "0 contour sets"}, nil
+		}
+		var b strings.Builder
+		fmt.Fprintf(&b, "%d contour sets", len(p.ContourSets))
+		for _, set := range p.SortedContourSets() {
+			fmt.Fprintf(&b, "\n%s interval=%s base=%s polylines=%d breaklines=%d index=%d",
+				set.ID,
+				formatDistance(set.Interval, p.DisplayPrecision()),
+				formatDistance(set.Base, p.DisplayPrecision()),
+				len(set.Polylines),
+				len(set.Breaklines),
+				set.IndexEvery,
+			)
+		}
+		return Result{Message: b.String()}, nil
 	case "info":
 		if len(f) != 3 {
 			return Result{}, fmt.Errorf("usage: contour info <id>")

@@ -5,6 +5,7 @@ import "strings"
 const ProjectExt = ".srv"
 const DXFExt = ".dxf"
 const CSVExt = ".csv"
+const GeoJSONExt = ".geojson"
 
 func Project(path string) string {
 	return ensureExt(path, ProjectExt)
@@ -16,6 +17,10 @@ func DXF(path string) string {
 
 func CSV(path string) string {
 	return ensureExt(path, CSVExt)
+}
+
+func GeoJSON(path string) string {
+	return ensureExt(path, GeoJSONExt)
 }
 
 func ensureExt(path, ext string) string {

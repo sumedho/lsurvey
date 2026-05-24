@@ -71,3 +71,20 @@ func TestFormatDMSWithSymbolsAndHundredths(t *testing.T) {
 		t.Fatalf("got %q want 123°30′45.67″", got)
 	}
 }
+
+func TestFormatQuadrant(t *testing.T) {
+	tests := []struct {
+		degrees float64
+		want    string
+	}{
+		{degrees: 45, want: "N 45°00′00.00″ E"},
+		{degrees: 135, want: "S 45°00′00.00″ E"},
+		{degrees: 225, want: "S 45°00′00.00″ W"},
+		{degrees: 315, want: "N 45°00′00.00″ W"},
+	}
+	for _, tt := range tests {
+		if got := AngleFromDegrees(tt.degrees).FormatQuadrant(2); got != tt.want {
+			t.Fatalf("FormatQuadrant(%f)=%q want %q", tt.degrees, got, tt.want)
+		}
+	}
+}

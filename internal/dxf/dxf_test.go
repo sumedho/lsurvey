@@ -10,6 +10,7 @@ import (
 
 func TestWriteIncludesPointsLabelsLinesAndCodeLayers(t *testing.T) {
 	p := project.New("test")
+	p.SetDisplayPrecision(2)
 	p.Points["1"] = geom.Point{ID: "1", Northing: 100, Easting: 200, Code: "PEG"}
 	p.Points["2"] = geom.Point{ID: "2", Northing: 110, Easting: 210}
 	p.Lines["L1"] = project.Line{ID: "L1", From: "1", To: "2", Code: "BOUNDARY"}
@@ -49,6 +50,7 @@ func TestWriteIncludesPointsLabelsLinesAndCodeLayers(t *testing.T) {
 		"0\nLAYER\n2\nCONTOURS_INDEX\n70\n0\n62\n1\n6\nCONTINUOUS\n370\n13\n",
 		"0\nLAYER\n2\nCONTOUR_LABELS\n70\n0\n62\n8\n6\nCONTINUOUS\n370\n5\n",
 		"0\nLAYER\n2\nCONTOUR_LABELS_INDEX\n70\n0\n62\n1\n6\nCONTINUOUS\n370\n13\n",
+		"0\nLAYER\n2\nLINE_LABELS\n70\n0\n62\n3\n6\nCONTINUOUS\n370\n0\n",
 		"0\nLWPOLYLINE\n",
 		"8\nCONTOURS\n",
 		"62\n8\n",
@@ -65,6 +67,11 @@ func TestWriteIncludesPointsLabelsLinesAndCodeLayers(t *testing.T) {
 		"43\n0.1\n",
 		"8\nCONTOUR_LABELS_INDEX\n",
 		"1\n105\n",
+		"8\nLINE_LABELS\n",
+		"1\n14.14\n",
+		"1\n45.000000\n",
+		"50\n45\n",
+		"72\n1\n73\n2\n",
 	} {
 		if !strings.Contains(got, want) {
 			t.Fatalf("DXF missing %q:\n%s", want, got)
@@ -83,5 +90,32 @@ func TestContourLabelPointUsesPolylineEnd(t *testing.T) {
 	}
 	if got.Northing != 10 || got.Easting != 10 {
 		t.Fatalf("point=%+v want final contour vertex", got)
+	}
+}
+
+func TestLineAnnotationLabelsPlaceDistanceAndBearingOnOppositeSides(t *testing.T) {
+	from := geom.Point{Easting: 0, Northing: 0}
+	to := geom.Point{Easting: 10, Northing: 0}
+	labels, ok := lineAnnotationLabels(from, to, 0, 0, geom.Inverse(from, to), 3)
+	if !ok {
+		t.Fatal("expected labels")
+	}
+	if len(labels) != 2 {
+		t.Fatalf("labels=%d want 2", len(labels))
+	}
+	if labels[0].Value != "10.000" {
+		t.Fatalf("distance label=%q want 10.000", labels[0].Value)
+	}
+	if labels[1].Value != "90.000000" {
+		t.Fatalf("bearing label=%q", labels[1].Value)
+	}
+	if labels[0].Easting != 5 || labels[1].Easting != 5 {
+		t.Fatalf("labels=%+v want midpoint easting", labels)
+	}
+	if labels[0].Northing != -1 || labels[1].Northing != 1 {
+		t.Fatalf("labels=%+v want opposite-side offsets from midpoint", labels)
+	}
+	if labels[0].Rotation != 0 || labels[1].Rotation != 0 {
+		t.Fatalf("labels=%+v want 0 degree rotation", labels)
 	}
 }

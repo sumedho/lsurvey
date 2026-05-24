@@ -103,6 +103,80 @@ func TestCommandCompletionSuggestsNextPointIDForRenameAndLineOffset(t *testing.T
 	}
 }
 
+func TestCommandCompletionUsesTraverseLegWithoutAsID(t *testing.T) {
+	m := NewModel(project.New("test"), "")
+	m.input.SetValue("trav leg")
+	m.refreshCompletions()
+	matches := m.input.MatchedSuggestions()
+	if len(matches) == 0 {
+		t.Fatal("expected traverse suggestion")
+	}
+	if !strings.Contains(matches[0], "[vdiff <delta>] [code]") {
+		t.Fatalf("suggestion=%q missing traverse leg shape", matches[0])
+	}
+	if strings.Contains(matches[0], " as ") {
+		t.Fatalf("suggestion=%q should not require as <id>", matches[0])
+	}
+}
+
+func TestCommandCompletionIncludesShiftAndRotate(t *testing.T) {
+	m := NewModel(project.New("test"), "")
+	m.project.Points["1"] = geom.Point{ID: "1", Easting: 100, Northing: 200}
+	m.input.SetValue("shift 1")
+	m.refreshCompletions()
+	matches := m.input.MatchedSuggestions()
+	if len(matches) == 0 || !strings.Contains(matches[0], "east=<delta>") {
+		t.Fatalf("shift suggestion=%v", matches)
+	}
+
+	m.input.SetValue("rotate 1")
+	m.refreshCompletions()
+	matches = m.input.MatchedSuggestions()
+	if len(matches) == 0 || !strings.Contains(matches[0], "<bearing>") {
+		t.Fatalf("rotate suggestion=%v", matches)
+	}
+}
+
+func TestCommandCompletionIncludesLineGenForKnownCode(t *testing.T) {
+	m := NewModel(project.New("test"), "")
+	m.project.Points["1"] = geom.Point{ID: "1", Easting: 100, Northing: 200, Code: "PEG"}
+	m.input.SetValue("line gen")
+	m.refreshCompletions()
+	matches := m.input.MatchedSuggestions()
+	if len(matches) == 0 || !strings.Contains(matches[0], "line gen PEG") {
+		t.Fatalf("line gen suggestion=%v", matches)
+	}
+}
+
+func TestCommandCompletionIncludesBearingAndDistanceMath(t *testing.T) {
+	m := NewModel(project.New("test"), "")
+
+	m.input.SetValue("bearing add")
+	m.refreshCompletions()
+	matches := m.input.MatchedSuggestions()
+	if len(matches) == 0 || !strings.Contains(matches[0], "bearing add <a> <b>") {
+		t.Fatalf("bearing suggestion=%v", matches)
+	}
+
+	m.input.SetValue("dist sub")
+	m.refreshCompletions()
+	matches = m.input.MatchedSuggestions()
+	if len(matches) == 0 || !strings.Contains(matches[0], "dist sub <a> <b>") {
+		t.Fatalf("dist suggestion=%v", matches)
+	}
+}
+
+func TestCommandCompletionIncludesCloseCommand(t *testing.T) {
+	m := NewModel(project.New("test"), "")
+	m.project.Points["1"] = geom.Point{ID: "1", Easting: 100, Northing: 200}
+	m.input.SetValue("close 1")
+	m.refreshCompletions()
+	matches := m.input.MatchedSuggestions()
+	if len(matches) == 0 || !strings.Contains(matches[0], "close 1 <p2> <p3> ...") {
+		t.Fatalf("close suggestion=%v", matches)
+	}
+}
+
 func TestCommandCompletionTabFillsOneArgumentAtATime(t *testing.T) {
 	m := NewModel(project.New("test"), "")
 	m.project.Points["1"] = geom.Point{ID: "1", Easting: 100, Northing: 200}

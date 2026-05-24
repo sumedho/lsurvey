@@ -157,6 +157,20 @@ func (a Angle) FormatDMS(precision int) string {
 	return fmt.Sprintf("%d°%02d′%02d.%0*d″", d, m, s, precision, frac)
 }
 
+func (a Angle) FormatQuadrant(precision int) string {
+	deg := normalizeDegrees(a.degrees)
+	switch {
+	case deg <= 90:
+		return "N " + AngleFromDegrees(deg).FormatDMS(precision) + " E"
+	case deg <= 180:
+		return "S " + AngleFromDegrees(180-deg).FormatDMS(precision) + " E"
+	case deg <= 270:
+		return "S " + AngleFromDegrees(deg-180).FormatDMS(precision) + " W"
+	default:
+		return "N " + AngleFromDegrees(360-deg).FormatDMS(precision) + " W"
+	}
+}
+
 func (a Angle) dmsParts(precision int) (int, int, int, int) {
 	if precision < 0 {
 		precision = 0

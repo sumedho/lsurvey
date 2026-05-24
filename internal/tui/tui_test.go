@@ -26,6 +26,47 @@ func TestExecuteCommandRoutesCogoAndUpdatesDirtyState(t *testing.T) {
 	}
 }
 
+func TestNewModelStartsInSplashModeWithVersion(t *testing.T) {
+	m := NewStartupModelWithVersion(project.New("test"), "", "1.2.3")
+	if m.mode != ModeSplash {
+		t.Fatalf("mode=%v want splash", m.mode)
+	}
+	m.width = 80
+	m.height = 24
+	view := m.View()
+	for _, want := range []string{"LSurvey", "Version 1.2.3", "Press any key to continue"} {
+		if !strings.Contains(view, want) {
+			t.Fatalf("splash missing %q:\n%s", want, view)
+		}
+	}
+}
+
+func TestSplashDoneMessageEntersMainMode(t *testing.T) {
+	m := NewStartupModelWithVersion(project.New("test"), "", "1.2.3")
+	updated, _ := m.Update(splashDoneMsg{})
+	got := updated.(Model)
+	if got.mode != ModeMain {
+		t.Fatalf("mode=%v want main", got.mode)
+	}
+}
+
+func TestSplashKeyDismissesToMainMode(t *testing.T) {
+	m := NewStartupModelWithVersion(project.New("test"), "", "1.2.3")
+	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'x'}})
+	got := updated.(Model)
+	if got.mode != ModeMain {
+		t.Fatalf("mode=%v want main", got.mode)
+	}
+}
+
+func TestDismissSplashCommandReturnsSplashDoneMessage(t *testing.T) {
+	cmd := dismissSplashAfter(0)
+	msg := cmd()
+	if _, ok := msg.(splashDoneMsg); !ok {
+		t.Fatalf("message=%T want splashDoneMsg", msg)
+	}
+}
+
 func TestExecuteCommandFilterSortAndHelp(t *testing.T) {
 	m := NewModel(project.New("test"), "")
 	m.ExecuteCommand("filter PEG")
@@ -160,6 +201,38 @@ func TestExecuteCommandImportExportCSV(t *testing.T) {
 	}
 	if loaded.project.Points["1"].Code != "PEG" {
 		t.Fatalf("point=%+v", loaded.project.Points["1"])
+	}
+	if !loaded.dirty {
+		t.Fatal("import should mark project dirty")
+	}
+}
+
+func TestExecuteCommandImportExportGeoJSON(t *testing.T) {
+	dir := t.TempDir()
+	geojsonPath := filepath.Join(dir, "survey")
+	m := NewModel(project.New("test"), "")
+	m.ExecuteCommand("pt add 1 100 200 5.5 PEG")
+	m.ExecuteCommand(`pt edit 1 desc="corner"`)
+	m.ExecuteCommand("pt add 2 110 210")
+	m.ExecuteCommand("line add L1 1 2 BOUNDARY")
+	m.ExecuteCommand("export geojson " + geojsonPath)
+	if m.lastErr != "" {
+		t.Fatalf("export geojson error: %s", m.lastErr)
+	}
+
+	loaded := NewModel(project.New("loaded"), "")
+	loaded.ExecuteCommand("import geojson " + geojsonPath)
+	if loaded.lastErr != "" {
+		t.Fatalf("import geojson error: %s", loaded.lastErr)
+	}
+	if len(loaded.project.Points) != 2 {
+		t.Fatalf("points=%d want 2", len(loaded.project.Points))
+	}
+	if len(loaded.project.Lines) != 1 {
+		t.Fatalf("lines=%d want 1", len(loaded.project.Lines))
+	}
+	if got := loaded.project.Lines["L1"]; got.From != "1" || got.To != "2" {
+		t.Fatalf("line=%+v want from=1 to=2", got)
 	}
 	if !loaded.dirty {
 		t.Fatal("import should mark project dirty")
@@ -367,5 +440,26 @@ func TestViewRendersBoxedRegionsWithCommandLast(t *testing.T) {
 	}
 	if !strings.Contains(view, ">") {
 		t.Fatalf("command input prompt missing:\n%s", view)
+	}
+}
+
+func TestStatusLineShowsActiveTraverseContext(t *testing.T) {
+	m := NewModel(project.New("test"), "")
+	m.project.Points["1"] = geom.Point{ID: "1", Easting: 0, Northing: 0}
+	m.project.Points["3"] = geom.Point{ID: "3", Easting: 10, Northing: 0}
+	m.project.ContourSets["C1"] = project.ContourSet{ID: "C1"}
+	m.ExecuteCommand("trav start 1")
+
+	status := m.infoText(2)
+	for _, want := range []string{"contours=1", "trav current=1", "next=4"} {
+		if !strings.Contains(status, want) {
+			t.Fatalf("status=%q missing %q", status, want)
+		}
+	}
+
+	m.ExecuteCommand("trav close 3")
+	status = m.infoText(2)
+	if !strings.Contains(status, "close=3") {
+		t.Fatalf("status=%q missing close point", status)
 	}
 }

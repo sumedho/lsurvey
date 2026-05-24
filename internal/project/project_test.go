@@ -80,3 +80,25 @@ func TestLoadMigratesSchemaOneProject(t *testing.T) {
 		t.Fatal("contour sets should be initialized")
 	}
 }
+
+func TestNextPointIDUsesHighestNumericPointID(t *testing.T) {
+	p := New("test")
+	p.Points["1"] = geom.Point{ID: "1"}
+	p.Points["A"] = geom.Point{ID: "A"}
+	p.Points["12"] = geom.Point{ID: "12"}
+
+	if got := p.NextPointID(); got != "13" {
+		t.Fatalf("next point id=%q want 13", got)
+	}
+}
+
+func TestNextLineIDUsesHighestNumericLineID(t *testing.T) {
+	p := New("test")
+	p.Lines["L1"] = Line{ID: "L1"}
+	p.Lines["BOUND"] = Line{ID: "BOUND"}
+	p.Lines["L12"] = Line{ID: "L12"}
+
+	if got := p.NextLineID(); got != "L13" {
+		t.Fatalf("next line id=%q want L13", got)
+	}
+}

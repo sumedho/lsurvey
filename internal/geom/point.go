@@ -26,6 +26,12 @@ type AngleResult struct {
 	Outside Angle
 }
 
+type CloseResult struct {
+	Area      float64
+	Perimeter float64
+	Misclose  InverseResult
+}
+
 func Inverse(from, to Point) InverseResult {
 	dn := to.Northing - from.Northing
 	de := to.Easting - from.Easting
@@ -70,6 +76,25 @@ func AngleBetween(a, vertex, b Point) (AngleResult, bool) {
 	}, true
 }
 
+func Close(points []Point) (CloseResult, bool) {
+	if len(points) < 3 {
+		return CloseResult{}, false
+	}
+	var twiceArea float64
+	var perimeter float64
+	for i := range points {
+		j := (i + 1) % len(points)
+		twiceArea += points[i].Easting*points[j].Northing - points[j].Easting*points[i].Northing
+		perimeter += Inverse(points[i], points[j]).HorizontalDistance
+	}
+	misclose := Inverse(points[len(points)-1], points[0])
+	return CloseResult{
+		Area:      math.Abs(twiceArea) / 2,
+		Perimeter: perimeter,
+		Misclose:  misclose,
+	}, true
+}
+
 func Radiate(from Point, azimuth Angle, horizontalDistance float64, elevationDelta *float64, id, code string) Point {
 	n := from.Northing + horizontalDistance*math.Cos(azimuth.Radians())
 	e := from.Easting + horizontalDistance*math.Sin(azimuth.Radians())
@@ -105,6 +130,28 @@ func Offset(a, b Point, offset, chainage float64, id, code string) Point {
 	inv := Inverse(a, b)
 	base := Radiate(a, inv.Azimuth, chainage, nil, id, code)
 	return Radiate(base, inv.Azimuth.Add(AngleFromDegrees(90)), offset, nil, id, code)
+}
+
+func ShiftPoint(p Point, deltaE, deltaN float64, deltaZ *float64) Point {
+	p.Easting += deltaE
+	p.Northing += deltaN
+	if deltaZ != nil && p.Elevation != nil {
+		v := *p.Elevation + *deltaZ
+		p.Elevation = &v
+	}
+	return p
+}
+
+func RotatePoint(p Point, origin Point, angle Angle) Point {
+	de := p.Easting - origin.Easting
+	dn := p.Northing - origin.Northing
+	cosA := math.Cos(angle.Radians())
+	sinA := math.Sin(angle.Radians())
+	rotE := de*cosA + dn*sinA
+	rotN := dn*cosA - de*sinA
+	p.Easting = origin.Easting + rotE
+	p.Northing = origin.Northing + rotN
+	return p
 }
 
 func LineIntersection(a1, a2, b1, b2 Point, id, code string) (Point, bool) {
