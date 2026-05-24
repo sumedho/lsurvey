@@ -284,6 +284,7 @@ Open the map with `F2` or:
 ```text
 map
 map lines
+map contours
 map fit
 map zoom in
 map zoom out
@@ -292,6 +293,7 @@ map zoom out
 Map keys:
 
 - Arrow keys pan.
+- `c` toggles stored contour overlays; `~` marks minor and `=` marks index contours.
 - `+` or `=` zooms in.
 - `-` zooms out.
 - `f` fits to points.
@@ -393,10 +395,11 @@ pt add 3 1000 1100 11
 line add L1 1 2 TEST
 ```
 
-Shift every point and stored contour vertex:
+Shift every point and stored contour vertex by moving point `1` onto target
+coordinates:
 
 ```text
-shift 1 east=5 north=-2 elev=0.5
+shift 1 east=1005 north=998 elev=10.5
 ```
 
 Rotate every point and stored contour vertex around a base point:
@@ -408,6 +411,20 @@ rotate 1 -15.3000
 
 `rotate` accepts signed compact DMS or signed decimal degrees such as `-15.5d`.
 It does not accept quadrant bearings.
+
+Convert MGA-style grid coordinates to an anchored local-ground system using a
+combined scale factor, then reverse that persisted conversion when needed:
+
+```text
+scale apply 1 csf=0.9996 system=MGA2020_ZONE50
+scale reverse
+```
+
+Only horizontal coordinates and horizontal contour-distance diagnostics are
+scaled. Elevations remain unchanged. Export files contain the active
+coordinates; the TUI status and export message show the label while the scale
+is applied and remove it after reversal. If the project is shifted or rotated
+while scaled, the saved scale anchor is transformed with it.
 
 Fit a source-to-target similarity transformation without modifying project
 data:
@@ -470,6 +487,21 @@ Generate contours using selected breaklines only:
 contour gen C3 0.5 base=100 index=5 breaklines=ids:R1,R2
 ```
 
+Clip contours to closed linework selected by code, with optional exclusions:
+
+```text
+contour gen C4 0.5 boundary=codes:SITE exclude=codes:POND
+contour regen C4
+```
+
+Request quality warnings for long TIN edges and optional presentation
+smoothing:
+
+```text
+contour gen C5 0.5 boundary=codes:SITE maxedge=30 smooth=1
+contour info C5
+```
+
 Inspect and manage contour sets:
 
 ```text
@@ -483,8 +515,15 @@ Important contour rules:
 - Points without elevations are ignored.
 - Breakline endpoint points must have elevations.
 - Selected breaklines must not cross except at shared endpoints.
-- If points or breaklines change later, rerun `contour gen` to replace the
-  contour set.
+- `boundary=codes:` and `exclude=codes:` use closed stored-line rings; their
+  points may be 2D because they clip contours horizontally.
+- Relevant point or line changes mark stored contour sets stale; run
+  `contour regen <id>` to rebuild them from the saved generation settings.
+- Contour generation records warnings for duplicate elevated positions, long
+  TIN edges, and unconstrained hull contact. Omitting `maxedge=` uses an
+  automatic threshold based on point spacing.
+- `smooth=1` through `smooth=3` stores smoothed output while retaining raw
+  contour geometry; DXF uses the smoothed output.
 
 ## 12. Import And Export
 
@@ -525,7 +564,9 @@ Export DXF:
 export dxf terrain
 ```
 
-DXF includes points, point labels, stored lines, and stored contours.
+DXF includes points, point labels, stored lines, and stored contours. Contour
+labels are placed along readable contour paths and omitted when a path is too
+short or would overlap an existing contour label.
 
 ## 13. Batch Export Without Opening The TUI
 
@@ -559,6 +600,7 @@ line add ...
 inverse ...
 offset ...
 map lines
+map contours
 save job_name
 export dxf job_name
 export csv job_name_points
@@ -603,6 +645,8 @@ Calculations:
 - `offset`
 - `shift`
 - `rotate`
+- `scale apply`
+- `scale reverse`
 - `transform fit`
 
 Intersections:
@@ -651,6 +695,7 @@ TUI helpers:
 - `sort`
 - `map`
 - `map lines`
+- `map contours`
 - `map fit`
 - `map zoom in`
 - `map zoom out`

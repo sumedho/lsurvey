@@ -125,7 +125,7 @@ func TestCommandCompletionIncludesShiftAndRotate(t *testing.T) {
 	m.input.SetValue("shift 1")
 	m.refreshCompletions()
 	matches := m.input.MatchedSuggestions()
-	if len(matches) == 0 || !strings.Contains(matches[0], "east=<delta>") {
+	if len(matches) == 0 || !strings.Contains(matches[0], "east=<coordinate>") {
 		t.Fatalf("shift suggestion=%v", matches)
 	}
 
@@ -141,6 +141,13 @@ func TestCommandCompletionIncludesShiftAndRotate(t *testing.T) {
 	matches = m.input.MatchedSuggestions()
 	if len(matches) == 0 || !strings.Contains(matches[0], "<dst1> <src2> <dst2>") {
 		t.Fatalf("transform suggestion=%v", matches)
+	}
+
+	m.input.SetValue("scale apply 1")
+	m.refreshCompletions()
+	matches = m.input.MatchedSuggestions()
+	if len(matches) == 0 || !strings.Contains(matches[0], "csf=<factor>") {
+		t.Fatalf("scale suggestion=%v", matches)
 	}
 }
 

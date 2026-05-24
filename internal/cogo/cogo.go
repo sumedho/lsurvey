@@ -2,6 +2,7 @@ package cogo
 
 import (
 	"fmt"
+	"math"
 	"strconv"
 	"strings"
 
@@ -24,11 +25,12 @@ func Execute(p *project.Project, command string) (Result, error) {
 	if len(fields) == 0 {
 		return Result{}, fmt.Errorf("empty command")
 	}
+	var result Result
 	switch fields[0] {
 	case "pt":
-		return execPoint(p, fields)
+		result, err = execPoint(p, fields)
 	case "line":
-		return execLine(p, fields)
+		result, err = execLine(p, fields)
 	case "inverse":
 		return execInverse(p, fields)
 	case "angle":
@@ -40,25 +42,27 @@ func Execute(p *project.Project, command string) (Result, error) {
 	case "dist":
 		return execDistance(p, fields)
 	case "rad":
-		return execRad(p, fields)
+		result, err = execRad(p, fields)
 	case "rad3d":
-		return execRad3D(p, fields)
+		result, err = execRad3D(p, fields)
 	case "midpoint":
-		return execMidpoint(p, fields)
+		result, err = execMidpoint(p, fields)
 	case "offset":
-		return execOffset(p, fields)
+		result, err = execOffset(p, fields)
 	case "intersect":
-		return execIntersect(p, fields)
+		result, err = execIntersect(p, fields)
 	case "resect":
-		return execResect(p, fields)
+		result, err = execResect(p, fields)
 	case "shift":
 		return execShift(p, fields)
 	case "rotate":
 		return execRotate(p, fields)
+	case "scale":
+		return execScale(p, fields)
 	case "transform":
 		return execTransform(p, fields)
 	case "trav":
-		return execTraverse(p, fields)
+		result, err = execTraverse(p, fields)
 	case "contour":
 		return execContour(p, fields)
 	case "units":
@@ -66,6 +70,10 @@ func Execute(p *project.Project, command string) (Result, error) {
 	default:
 		return Result{}, fmt.Errorf("unknown command %q", fields[0])
 	}
+	if err == nil {
+		markContoursStaleAfterCommand(p, fields, result)
+	}
+	return result, err
 }
 
 func ExecuteAndRecord(p *project.Project, command string) (Result, error) {
@@ -205,7 +213,7 @@ func execLine(p *project.Project, f []string) (Result, error) {
 	switch f[1] {
 	case "add":
 		if len(f) < 5 {
-			return Result{}, fmt.Errorf("usage: line add <id> <p1> <p2> [code]")
+			return Result{}, fmt.Errorf("usage: line add <id> <p1> <p2> [code] [terrain=standard|ridge|drain]")
 		}
 		if _, ok := p.Lines[f[2]]; ok {
 			return Result{}, fmt.Errorf("line %q already exists", f[2])
@@ -216,11 +224,22 @@ func execLine(p *project.Project, f []string) (Result, error) {
 		if _, ok := p.Points[f[4]]; !ok {
 			return Result{}, fmt.Errorf("point %q not found", f[4])
 		}
-		code := ""
-		if len(f) >= 6 {
-			code = f[5]
+		line := project.Line{ID: f[2], From: f[3], To: f[4]}
+		for _, arg := range f[5:] {
+			k, v, ok := strings.Cut(arg, "=")
+			if !ok {
+				if line.Code != "" {
+					return Result{}, fmt.Errorf("usage: line add <id> <p1> <p2> [code] [terrain=standard|ridge|drain]")
+				}
+				line.Code = arg
+				continue
+			}
+			if k != "terrain" || !validTerrainRole(v) || v == "none" {
+				return Result{}, fmt.Errorf("terrain must be standard, ridge, or drain")
+			}
+			line.TerrainRole = v
 		}
-		p.Lines[f[2]] = project.Line{ID: f[2], From: f[3], To: f[4], Code: code}
+		p.Lines[f[2]] = line
 		return Result{Message: "added line " + f[2], Created: []string{"line:" + f[2]}}, nil
 	case "gen":
 		if len(f) != 3 {
@@ -238,7 +257,7 @@ func execLine(p *project.Project, f []string) (Result, error) {
 		return Result{Message: "deleted line " + f[2], Updated: []string{"line:" + f[2]}}, nil
 	case "edit":
 		if len(f) < 4 {
-			return Result{}, fmt.Errorf("usage: line edit <id> [from=] [to=] [code=] [desc=]")
+			return Result{}, fmt.Errorf("usage: line edit <id> [from=] [to=] [code=] [desc=] [terrain=none|standard|ridge|drain]")
 		}
 		id := f[2]
 		line, ok := p.Lines[id]
@@ -265,6 +284,14 @@ func execLine(p *project.Project, f []string) (Result, error) {
 				line.Code = v
 			case "desc":
 				line.Description = v
+			case "terrain":
+				if !validTerrainRole(v) {
+					return Result{}, fmt.Errorf("terrain must be none, standard, ridge, or drain")
+				}
+				if v == "none" {
+					v = ""
+				}
+				line.TerrainRole = v
 			default:
 				return Result{}, fmt.Errorf("unknown line field %q", k)
 			}
@@ -303,6 +330,10 @@ func execLine(p *project.Project, f []string) (Result, error) {
 	default:
 		return Result{}, fmt.Errorf("unknown line subcommand %q", f[1])
 	}
+}
+
+func validTerrainRole(role string) bool {
+	return role == "none" || role == "standard" || role == "ridge" || role == "drain"
 }
 
 func genLinesByCode(p *project.Project, code string) (Result, error) {
@@ -411,10 +442,12 @@ func execClose(p *project.Project, f []string) (Result, error) {
 	}
 	return Result{
 		Message: fmt.Sprintf(
-			"area=%s misclose az=%s hd=%s accuracy=%s",
+			"area=%s misclose az=%s hd=%s de=%s dn=%s accuracy=%s",
 			formatDistance(result.Area, p.DisplayPrecision()),
 			result.Misclose.Azimuth.FormatDMS(2),
 			formatDistance(result.Misclose.HorizontalDistance, p.DisplayPrecision()),
+			formatDistance(result.Misclose.DeltaEasting, p.DisplayPrecision()),
+			formatDistance(result.Misclose.DeltaNorthing, p.DisplayPrecision()),
 			accuracy,
 		),
 	}, nil
@@ -767,15 +800,16 @@ func execResect(p *project.Project, f []string) (Result, error) {
 
 func execShift(p *project.Project, f []string) (Result, error) {
 	if len(f) < 3 {
-		return Result{}, fmt.Errorf("usage: shift <base> [east=<delta>] [north=<delta>] [elev=<delta>]")
+		return Result{}, fmt.Errorf("usage: shift <base> [east=<coordinate>] [north=<coordinate>] [elev=<coordinate>]")
 	}
-	if _, err := point(p, f[1]); err != nil {
+	base, err := point(p, f[1])
+	if err != nil {
 		return Result{}, err
 	}
 	var (
-		deltaE   float64
-		deltaN   float64
-		deltaZ   *float64
+		targetE  *float64
+		targetN  *float64
+		targetZ  *float64
 		haveAxis bool
 	)
 	for _, arg := range f[2:] {
@@ -789,21 +823,21 @@ func execShift(p *project.Project, f []string) (Result, error) {
 			if err != nil {
 				return Result{}, err
 			}
-			deltaE = x
+			targetE = &x
 			haveAxis = true
 		case "north", "n", "northing", "y":
 			x, err := parseFloat(k, v)
 			if err != nil {
 				return Result{}, err
 			}
-			deltaN = x
+			targetN = &x
 			haveAxis = true
 		case "elev", "z":
 			x, err := parseFloat(k, v)
 			if err != nil {
 				return Result{}, err
 			}
-			deltaZ = &x
+			targetZ = &x
 			haveAxis = true
 		default:
 			return Result{}, fmt.Errorf("unknown shift field %q", k)
@@ -812,23 +846,42 @@ func execShift(p *project.Project, f []string) (Result, error) {
 	if !haveAxis {
 		return Result{}, fmt.Errorf("shift requires at least one of east=, north=, or elev=")
 	}
+	deltaE, deltaN := 0.0, 0.0
+	if targetE != nil {
+		deltaE = *targetE - base.Easting
+	}
+	if targetN != nil {
+		deltaN = *targetN - base.Northing
+	}
+	var deltaZ *float64
+	if targetZ != nil {
+		if base.Elevation == nil {
+			return Result{}, fmt.Errorf("shift base point %q has no elevation", base.ID)
+		}
+		value := *targetZ - *base.Elevation
+		deltaZ = &value
+	}
 	updated := make([]string, 0, len(p.Points)+len(p.ContourSets))
 	for id, pt := range p.Points {
 		p.Points[id] = geom.ShiftPoint(pt, deltaE, deltaN, deltaZ)
 		updated = append(updated, "point:"+id)
 	}
 	for id, set := range p.ContourSets {
-		for polyIdx := range set.Polylines {
-			if deltaZ != nil {
-				set.Polylines[polyIdx].Elevation += *deltaZ
-			}
-			for vertexIdx := range set.Polylines[polyIdx].Vertices {
-				set.Polylines[polyIdx].Vertices[vertexIdx].Easting += deltaE
-				set.Polylines[polyIdx].Vertices[vertexIdx].Northing += deltaN
+		shiftPolylines(set.Polylines, deltaE, deltaN, deltaZ)
+		shiftPolylines(set.RawPolylines, deltaE, deltaN, deltaZ)
+		if deltaZ != nil {
+			set.Base += *deltaZ
+			if set.Generation != nil && set.Generation.Base != nil {
+				value := *set.Generation.Base + *deltaZ
+				set.Generation.Base = &value
 			}
 		}
 		p.ContourSets[id] = set
 		updated = append(updated, "contour:"+id)
+	}
+	if p.GridGround != nil && p.GridGround.Mode == "local_ground" {
+		p.GridGround.AnchorEasting += deltaE
+		p.GridGround.AnchorNorthing += deltaN
 	}
 	return Result{Message: fmt.Sprintf("shifted %d points", len(p.Points)), Updated: updated}, nil
 }
@@ -851,21 +904,169 @@ func execRotate(p *project.Project, f []string) (Result, error) {
 		updated = append(updated, "point:"+id)
 	}
 	for id, set := range p.ContourSets {
-		for polyIdx := range set.Polylines {
-			for vertexIdx := range set.Polylines[polyIdx].Vertices {
-				pt := geom.Point{
-					Easting:  set.Polylines[polyIdx].Vertices[vertexIdx].Easting,
-					Northing: set.Polylines[polyIdx].Vertices[vertexIdx].Northing,
-				}
-				pt = geom.RotatePoint(pt, base, angle)
-				set.Polylines[polyIdx].Vertices[vertexIdx].Easting = pt.Easting
-				set.Polylines[polyIdx].Vertices[vertexIdx].Northing = pt.Northing
+		rotatePolylines(set.Polylines, base, angle)
+		rotatePolylines(set.RawPolylines, base, angle)
+		p.ContourSets[id] = set
+		updated = append(updated, "contour:"+id)
+	}
+	if p.GridGround != nil && p.GridGround.Mode == "local_ground" {
+		anchor := geom.RotatePoint(geom.Point{
+			Easting:  p.GridGround.AnchorEasting,
+			Northing: p.GridGround.AnchorNorthing,
+		}, base, angle)
+		p.GridGround.AnchorEasting = anchor.Easting
+		p.GridGround.AnchorNorthing = anchor.Northing
+	}
+	return Result{Message: fmt.Sprintf("rotated %d points by %s", len(p.Points), f[2]), Updated: updated}, nil
+}
+
+func shiftPolylines(polylines []project.ContourPolyline, east, north float64, elev *float64) {
+	for polyIdx := range polylines {
+		if elev != nil {
+			polylines[polyIdx].Elevation += *elev
+		}
+		for vertexIdx := range polylines[polyIdx].Vertices {
+			polylines[polyIdx].Vertices[vertexIdx].Easting += east
+			polylines[polyIdx].Vertices[vertexIdx].Northing += north
+		}
+	}
+}
+
+func rotatePolylines(polylines []project.ContourPolyline, base geom.Point, angle geom.Angle) {
+	for polyIdx := range polylines {
+		for vertexIdx := range polylines[polyIdx].Vertices {
+			pt := geom.Point{
+				Easting:  polylines[polyIdx].Vertices[vertexIdx].Easting,
+				Northing: polylines[polyIdx].Vertices[vertexIdx].Northing,
+			}
+			pt = geom.RotatePoint(pt, base, angle)
+			polylines[polyIdx].Vertices[vertexIdx].Easting = pt.Easting
+			polylines[polyIdx].Vertices[vertexIdx].Northing = pt.Northing
+		}
+	}
+}
+
+func execScale(p *project.Project, f []string) (Result, error) {
+	if len(f) < 2 {
+		return Result{}, fmt.Errorf("usage: scale apply <base> csf=<factor> [system=<label>] OR scale reverse")
+	}
+	switch f[1] {
+	case "apply":
+		return execScaleApply(p, f)
+	case "reverse":
+		return execScaleReverse(p, f)
+	default:
+		return Result{}, fmt.Errorf("usage: scale apply <base> csf=<factor> [system=<label>] OR scale reverse")
+	}
+}
+
+func execScaleApply(p *project.Project, f []string) (Result, error) {
+	const usage = "usage: scale apply <base> csf=<factor> [system=<label>]"
+	if len(f) < 4 {
+		return Result{}, fmt.Errorf(usage)
+	}
+	if p.GridGround != nil && p.GridGround.Mode == "local_ground" {
+		return Result{}, fmt.Errorf("project already has an applied scale; use scale reverse first")
+	}
+	base, err := point(p, f[2])
+	if err != nil {
+		return Result{}, err
+	}
+	var (
+		csf       float64
+		haveCSF   bool
+		gridLabel string
+	)
+	for _, arg := range f[3:] {
+		key, value, ok := strings.Cut(arg, "=")
+		if !ok {
+			return Result{}, fmt.Errorf(usage)
+		}
+		switch key {
+		case "csf":
+			csf, err = parseFloat("csf", value)
+			if err != nil {
+				return Result{}, err
+			}
+			haveCSF = true
+		case "system":
+			gridLabel = value
+		default:
+			return Result{}, fmt.Errorf("unknown scale field %q", key)
+		}
+	}
+	if !haveCSF || math.IsNaN(csf) || math.IsInf(csf, 0) || csf <= 0 {
+		return Result{}, fmt.Errorf("csf must be a finite number greater than zero")
+	}
+	p.GridGround = &project.GridGroundConversion{
+		Mode:           "local_ground",
+		GridSystem:     gridLabel,
+		AnchorPointID:  base.ID,
+		AnchorEasting:  base.Easting,
+		AnchorNorthing: base.Northing,
+		CSF:            csf,
+	}
+	updated := scaleHorizontalGeometry(p, base.Easting, base.Northing, 1/csf)
+	return Result{Message: fmt.Sprintf("applied scale to %d points", len(p.Points)), Updated: updated}, nil
+}
+
+func execScaleReverse(p *project.Project, f []string) (Result, error) {
+	if len(f) != 2 {
+		return Result{}, fmt.Errorf("usage: scale reverse")
+	}
+	if p.GridGround == nil || p.GridGround.Mode != "local_ground" {
+		return Result{}, fmt.Errorf("project has no applied scale to reverse")
+	}
+	conversion := p.GridGround
+	updated := scaleHorizontalGeometry(p, conversion.AnchorEasting, conversion.AnchorNorthing, conversion.CSF)
+	p.GridGround = nil
+	return Result{Message: fmt.Sprintf("reversed scale for %d points", len(p.Points)), Updated: updated}, nil
+}
+
+func scaleHorizontalGeometry(p *project.Project, anchorE, anchorN, factor float64) []string {
+	updated := make([]string, 0, len(p.Points)+len(p.ContourSets))
+	for id, pt := range p.Points {
+		pt.Easting = anchorE + (pt.Easting-anchorE)*factor
+		pt.Northing = anchorN + (pt.Northing-anchorN)*factor
+		p.Points[id] = pt
+		updated = append(updated, "point:"+id)
+	}
+	for id, set := range p.ContourSets {
+		scalePolylines(set.Polylines, anchorE, anchorN, factor)
+		scalePolylines(set.RawPolylines, anchorE, anchorN, factor)
+		if set.EffectiveMaxEdge != 0 {
+			set.EffectiveMaxEdge *= factor
+		}
+		if set.Generation != nil && set.Generation.MaxEdge != nil {
+			value := *set.Generation.MaxEdge * factor
+			set.Generation.MaxEdge = &value
+		}
+		for i := range set.Diagnostics {
+			if set.Diagnostics[i].Code != "long_edge" {
+				continue
+			}
+			set.Diagnostics[i].Measured *= factor
+			set.Diagnostics[i].Limit *= factor
+			if len(set.Diagnostics[i].EdgeIDs) >= 2 {
+				set.Diagnostics[i].Message = fmt.Sprintf("TIN edge %s-%s length %.3f exceeds warning limit %.3f",
+					set.Diagnostics[i].EdgeIDs[0], set.Diagnostics[i].EdgeIDs[1],
+					set.Diagnostics[i].Measured, set.Diagnostics[i].Limit)
 			}
 		}
 		p.ContourSets[id] = set
 		updated = append(updated, "contour:"+id)
 	}
-	return Result{Message: fmt.Sprintf("rotated %d points by %s", len(p.Points), f[2]), Updated: updated}, nil
+	return updated
+}
+
+func scalePolylines(polylines []project.ContourPolyline, anchorE, anchorN, factor float64) {
+	for polyIdx := range polylines {
+		for vertexIdx := range polylines[polyIdx].Vertices {
+			v := &polylines[polyIdx].Vertices[vertexIdx]
+			v.Easting = anchorE + (v.Easting-anchorE)*factor
+			v.Northing = anchorN + (v.Northing-anchorN)*factor
+		}
+	}
 }
 
 func execTransform(p *project.Project, f []string) (Result, error) {
@@ -1063,13 +1264,13 @@ func execContour(p *project.Project, f []string) (Result, error) {
 	switch f[1] {
 	case "gen":
 		if len(f) < 4 {
-			return Result{}, fmt.Errorf("usage: contour gen <id> <interval> [base=<elev>] [index=<n>] [breaklines=all|none|ids:L1,L2]")
+			return Result{}, fmt.Errorf("usage: contour gen <id> <interval> [base=<elev>] [index=<n>] [breaklines=all|none|ids:L1,L2] [boundary=codes:C1,C2] [exclude=codes:C3,C4] [maxedge=<distance>] [smooth=<0..3>]")
 		}
 		interval, err := parseFloat("interval", f[3])
 		if err != nil {
 			return Result{}, err
 		}
-		opts := terrain.Options{ID: f[2], Interval: interval, UseBreakline: true}
+		opts := terrain.Options{ID: f[2], Interval: interval, UseBreakline: true, BreaklineMode: "all"}
 		for _, arg := range f[4:] {
 			k, v, ok := strings.Cut(arg, "=")
 			if !ok {
@@ -1093,12 +1294,15 @@ func execContour(p *project.Project, f []string) (Result, error) {
 				switch {
 				case v == "all":
 					opts.UseBreakline = true
+					opts.BreaklineMode = "all"
 					opts.BreaklineIDs = nil
 				case v == "none":
 					opts.UseBreakline = false
+					opts.BreaklineMode = "none"
 					opts.BreaklineIDs = nil
 				case strings.HasPrefix(v, "ids:"):
 					opts.UseBreakline = true
+					opts.BreaklineMode = "ids"
 					value := strings.TrimPrefix(v, "ids:")
 					if value == "" {
 						return Result{}, fmt.Errorf("breaklines ids list is empty")
@@ -1107,6 +1311,30 @@ func execContour(p *project.Project, f []string) (Result, error) {
 				default:
 					return Result{}, fmt.Errorf("breaklines must be all, none, or ids:L1,L2")
 				}
+			case "boundary":
+				codes, err := parseCodeSelector("boundary", v)
+				if err != nil {
+					return Result{}, err
+				}
+				opts.BoundaryCodes = codes
+			case "exclude":
+				codes, err := parseCodeSelector("exclude", v)
+				if err != nil {
+					return Result{}, err
+				}
+				opts.ExclusionCodes = codes
+			case "maxedge":
+				x, err := parseFloat("maxedge", v)
+				if err != nil || x <= 0 {
+					return Result{}, fmt.Errorf("maxedge must be greater than zero")
+				}
+				opts.MaxEdge = &x
+			case "smooth":
+				n, err := strconv.Atoi(v)
+				if err != nil || n < 0 || n > 3 {
+					return Result{}, fmt.Errorf("smooth must be between zero and three")
+				}
+				opts.Smooth = n
 			default:
 				return Result{}, fmt.Errorf("unknown contour option %q", k)
 			}
@@ -1121,9 +1349,26 @@ func execContour(p *project.Project, f []string) (Result, error) {
 		_, replaced := p.ContourSets[set.ID]
 		p.ContourSets[set.ID] = set
 		if replaced {
-			return Result{Message: fmt.Sprintf("replaced contour set %s with %d polylines", set.ID, len(set.Polylines)), Updated: []string{"contour:" + set.ID}}, nil
+			return Result{Message: contourGenerationMessage("replaced", set), Updated: []string{"contour:" + set.ID}}, nil
 		}
-		return Result{Message: fmt.Sprintf("generated contour set %s with %d polylines", set.ID, len(set.Polylines)), Created: []string{"contour:" + set.ID}}, nil
+		return Result{Message: contourGenerationMessage("generated", set), Created: []string{"contour:" + set.ID}}, nil
+	case "regen":
+		if len(f) != 3 {
+			return Result{}, fmt.Errorf("usage: contour regen <id>")
+		}
+		existing, ok := p.ContourSets[f[2]]
+		if !ok {
+			return Result{}, fmt.Errorf("contour set %q not found", f[2])
+		}
+		if existing.Generation == nil {
+			return Result{}, fmt.Errorf("contour set %q has no saved generation specification; replace it with contour gen", f[2])
+		}
+		set, err := terrain.Generate(p, optionsFromSpec(existing.ID, existing.Generation))
+		if err != nil {
+			return Result{}, err
+		}
+		p.ContourSets[set.ID] = set
+		return Result{Message: contourGenerationMessage("regenerated", set), Updated: []string{"contour:" + set.ID}}, nil
 	case "list":
 		if len(p.ContourSets) == 0 {
 			return Result{Message: "0 contour sets"}, nil
@@ -1131,13 +1376,16 @@ func execContour(p *project.Project, f []string) (Result, error) {
 		var b strings.Builder
 		fmt.Fprintf(&b, "%d contour sets", len(p.ContourSets))
 		for _, set := range p.SortedContourSets() {
-			fmt.Fprintf(&b, "\n%s interval=%s base=%s polylines=%d breaklines=%d index=%d",
+			fmt.Fprintf(&b, "\n%s interval=%s base=%s polylines=%d breaklines=%d index=%d smooth=%d warnings=%d%s",
 				set.ID,
 				formatDistance(set.Interval, p.DisplayPrecision()),
 				formatDistance(set.Base, p.DisplayPrecision()),
 				len(set.Polylines),
 				len(set.Breaklines),
 				set.IndexEvery,
+				contourSmooth(set),
+				len(set.Diagnostics),
+				contourStaleSuffix(set),
 			)
 		}
 		return Result{Message: b.String()}, nil
@@ -1149,7 +1397,7 @@ func execContour(p *project.Project, f []string) (Result, error) {
 		if !ok {
 			return Result{}, fmt.Errorf("contour set %q not found", f[2])
 		}
-		return Result{Message: fmt.Sprintf("%s interval=%s base=%s polylines=%d breaklines=%d", set.ID, formatDistance(set.Interval, p.DisplayPrecision()), formatDistance(set.Base, p.DisplayPrecision()), len(set.Polylines), len(set.Breaklines))}, nil
+		return Result{Message: contourInfo(set, p.DisplayPrecision())}, nil
 	case "del":
 		if len(f) != 3 {
 			return Result{}, fmt.Errorf("usage: contour del <id>")
@@ -1164,6 +1412,82 @@ func execContour(p *project.Project, f []string) (Result, error) {
 	}
 }
 
+func parseCodeSelector(name, value string) ([]string, error) {
+	if !strings.HasPrefix(value, "codes:") {
+		return nil, fmt.Errorf("%s must be codes:C1,C2", name)
+	}
+	value = strings.TrimPrefix(value, "codes:")
+	if value == "" {
+		return nil, fmt.Errorf("%s codes list is empty", name)
+	}
+	codes := strings.Split(value, ",")
+	for _, code := range codes {
+		if code == "" {
+			return nil, fmt.Errorf("%s codes list contains an empty code", name)
+		}
+	}
+	return codes, nil
+}
+
+func optionsFromSpec(id string, spec *project.ContourGenerationSpec) terrain.Options {
+	opts := terrain.Options{
+		ID:             id,
+		Interval:       spec.Interval,
+		Base:           spec.Base,
+		IndexEvery:     spec.IndexEvery,
+		IndexEverySet:  spec.IndexEverySet,
+		BreaklineMode:  spec.BreaklineMode,
+		BreaklineIDs:   append([]string(nil), spec.BreaklineIDs...),
+		BoundaryCodes:  append([]string(nil), spec.BoundaryCodes...),
+		ExclusionCodes: append([]string(nil), spec.ExclusionCodes...),
+		MaxEdge:        spec.MaxEdge,
+		Smooth:         spec.Smooth,
+	}
+	opts.UseBreakline = spec.BreaklineMode != "none"
+	return opts
+}
+
+func contourStaleSuffix(set project.ContourSet) string {
+	if set.Stale {
+		return " stale"
+	}
+	return ""
+}
+
+func contourInfo(set project.ContourSet, precision int) string {
+	msg := fmt.Sprintf("%s interval=%s base=%s polylines=%d breaklines=%d triangles=%d maxedge=%s smooth=%d warnings=%d%s",
+		set.ID, formatDistance(set.Interval, precision), formatDistance(set.Base, precision),
+		len(set.Polylines), len(set.Breaklines), set.TriangleCount,
+		formatDistance(set.EffectiveMaxEdge, precision), contourSmooth(set), len(set.Diagnostics), contourStaleSuffix(set))
+	if set.Generation != nil {
+		msg += fmt.Sprintf(" breakline_mode=%s boundary_codes=%s exclusion_codes=%s",
+			set.Generation.BreaklineMode, strings.Join(set.Generation.BoundaryCodes, ","),
+			strings.Join(set.Generation.ExclusionCodes, ","))
+	}
+	if set.StaleReason != "" {
+		msg += " reason=" + set.StaleReason
+	}
+	for _, diagnostic := range set.Diagnostics {
+		msg += fmt.Sprintf("\nwarning %s: %s", diagnostic.Code, diagnostic.Message)
+	}
+	return msg
+}
+
+func contourSmooth(set project.ContourSet) int {
+	if set.Generation == nil {
+		return 0
+	}
+	return set.Generation.Smooth
+}
+
+func contourGenerationMessage(action string, set project.ContourSet) string {
+	msg := fmt.Sprintf("%s contour set %s with %d polylines", action, set.ID, len(set.Polylines))
+	if len(set.Diagnostics) > 0 {
+		msg += fmt.Sprintf(" (%d warnings)", len(set.Diagnostics))
+	}
+	return msg
+}
+
 func parseAngleTokens(tokens []string) (geom.Angle, int, error) {
 	if len(tokens) >= 3 {
 		if a, used, err := geom.ParseQuadrantBearing(tokens[:3]); err == nil {
@@ -1175,6 +1499,51 @@ func parseAngleTokens(tokens []string) (geom.Angle, int, error) {
 	}
 	a, err := geom.ParseAngle(tokens[0])
 	return a, 1, err
+}
+
+func markContoursStaleAfterCommand(p *project.Project, fields []string, result Result) {
+	if len(fields) == 0 || len(p.ContourSets) == 0 {
+		return
+	}
+	reason := ""
+	switch fields[0] {
+	case "pt":
+		switch fields[1] {
+		case "add", "del", "rename":
+			reason = "point geometry changed"
+		case "edit":
+			for _, arg := range fields[3:] {
+				if strings.HasPrefix(arg, "east=") || strings.HasPrefix(arg, "easting=") ||
+					strings.HasPrefix(arg, "e=") || strings.HasPrefix(arg, "north=") ||
+					strings.HasPrefix(arg, "northing=") || strings.HasPrefix(arg, "n=") ||
+					strings.HasPrefix(arg, "elev=") || strings.HasPrefix(arg, "z=") {
+					reason = "point geometry changed"
+				}
+			}
+		}
+	case "line":
+		switch fields[1] {
+		case "add", "del", "gen":
+			reason = "line geometry changed"
+		case "edit":
+			for _, arg := range fields[3:] {
+				if strings.HasPrefix(arg, "from=") || strings.HasPrefix(arg, "to=") ||
+					strings.HasPrefix(arg, "code=") || strings.HasPrefix(arg, "terrain=") {
+					reason = "line terrain input changed"
+				}
+			}
+		}
+	default:
+		for _, item := range append(append([]string(nil), result.Created...), result.Updated...) {
+			if strings.HasPrefix(item, "point:") || strings.HasPrefix(item, "line:") {
+				reason = "point geometry changed"
+				break
+			}
+		}
+	}
+	if reason != "" {
+		p.MarkContoursStale(reason)
+	}
 }
 
 func point(p *project.Project, id string) (geom.Point, error) {

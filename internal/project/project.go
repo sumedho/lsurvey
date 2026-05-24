@@ -11,7 +11,7 @@ import (
 	"lsurvey/internal/geom"
 )
 
-const CurrentSchemaVersion = 2
+const CurrentSchemaVersion = 5
 
 type Line struct {
 	ID          string `json:"id"`
@@ -19,6 +19,7 @@ type Line struct {
 	To          string `json:"to"`
 	Code        string `json:"code,omitempty"`
 	Description string `json:"description,omitempty"`
+	TerrainRole string `json:"terrain_role,omitempty"`
 }
 
 type ContourVertex struct {
@@ -33,15 +34,47 @@ type ContourPolyline struct {
 	Vertices  []ContourVertex `json:"vertices"`
 }
 
+type ContourDiagnostic struct {
+	Code     string   `json:"code"`
+	Message  string   `json:"message"`
+	PointIDs []string `json:"point_ids,omitempty"`
+	EdgeIDs  []string `json:"edge_ids,omitempty"`
+	Measured float64  `json:"measured,omitempty"`
+	Limit    float64  `json:"limit,omitempty"`
+}
+
+type ContourGenerationSpec struct {
+	Interval       float64  `json:"interval"`
+	Base           *float64 `json:"base,omitempty"`
+	IndexEvery     int      `json:"index_every,omitempty"`
+	IndexEverySet  bool     `json:"index_every_set,omitempty"`
+	BreaklineMode  string   `json:"breakline_mode,omitempty"`
+	BreaklineIDs   []string `json:"breakline_ids,omitempty"`
+	BoundaryCodes  []string `json:"boundary_codes,omitempty"`
+	ExclusionCodes []string `json:"exclusion_codes,omitempty"`
+	MaxEdge        *float64 `json:"max_edge,omitempty"`
+	Smooth         int      `json:"smooth,omitempty"`
+}
+
 type ContourSet struct {
-	ID           string            `json:"id"`
-	Interval     float64           `json:"interval"`
-	Base         float64           `json:"base"`
-	IndexEvery   int               `json:"index_every,omitempty"`
-	SourcePoints []string          `json:"source_points"`
-	Breaklines   []string          `json:"breaklines,omitempty"`
-	GeneratedAt  time.Time         `json:"generated_at"`
-	Polylines    []ContourPolyline `json:"polylines"`
+	ID               string                 `json:"id"`
+	Interval         float64                `json:"interval"`
+	Base             float64                `json:"base"`
+	IndexEvery       int                    `json:"index_every,omitempty"`
+	SourcePoints     []string               `json:"source_points"`
+	Breaklines       []string               `json:"breaklines,omitempty"`
+	BreaklineRoles   map[string]string      `json:"breakline_roles,omitempty"`
+	BoundaryLines    []string               `json:"boundary_lines,omitempty"`
+	ExclusionLines   []string               `json:"exclusion_lines,omitempty"`
+	Generation       *ContourGenerationSpec `json:"generation,omitempty"`
+	Stale            bool                   `json:"stale,omitempty"`
+	StaleReason      string                 `json:"stale_reason,omitempty"`
+	GeneratedAt      time.Time              `json:"generated_at"`
+	TriangleCount    int                    `json:"triangle_count,omitempty"`
+	EffectiveMaxEdge float64                `json:"effective_max_edge,omitempty"`
+	Diagnostics      []ContourDiagnostic    `json:"diagnostics,omitempty"`
+	RawPolylines     []ContourPolyline      `json:"raw_polylines,omitempty"`
+	Polylines        []ContourPolyline      `json:"polylines"`
 }
 
 type HistoryRecord struct {
@@ -61,6 +94,15 @@ type TraverseState struct {
 	LegPointIDs []string `json:"leg_point_ids"`
 }
 
+type GridGroundConversion struct {
+	Mode           string  `json:"mode"`
+	GridSystem     string  `json:"grid_system,omitempty"`
+	AnchorPointID  string  `json:"anchor_point_id,omitempty"`
+	AnchorEasting  float64 `json:"anchor_easting"`
+	AnchorNorthing float64 `json:"anchor_northing"`
+	CSF            float64 `json:"csf"`
+}
+
 type Project struct {
 	SchemaVersion int                   `json:"schema_version"`
 	AppVersion    string                `json:"app_version,omitempty"`
@@ -72,6 +114,7 @@ type Project struct {
 	Lines         map[string]Line       `json:"lines"`
 	ContourSets   map[string]ContourSet `json:"contour_sets,omitempty"`
 	Traverse      *TraverseState        `json:"traverse,omitempty"`
+	GridGround    *GridGroundConversion `json:"grid_ground,omitempty"`
 	History       []HistoryRecord       `json:"history"`
 }
 
@@ -100,7 +143,7 @@ func Load(path string) (*Project, error) {
 	if err := json.Unmarshal(data, &p); err != nil {
 		return nil, err
 	}
-	if p.SchemaVersion != CurrentSchemaVersion && p.SchemaVersion != 1 {
+	if p.SchemaVersion < 1 || p.SchemaVersion > CurrentSchemaVersion {
 		return nil, fmt.Errorf("unsupported schema_version %d", p.SchemaVersion)
 	}
 	p.ensure()
@@ -130,8 +173,31 @@ func (p *Project) SortedPoints() []geom.Point {
 	for _, pt := range p.Points {
 		points = append(points, pt)
 	}
-	sort.Slice(points, func(i, j int) bool { return points[i].ID < points[j].ID })
+	sort.Slice(points, func(i, j int) bool { return PointIDLess(points[i].ID, points[j].ID) })
 	return points
+}
+
+func PointIDLess(a, b string) bool {
+	an, aNumeric := numericPointID(a)
+	bn, bNumeric := numericPointID(b)
+	switch {
+	case aNumeric && bNumeric:
+		if an != bn {
+			return an < bn
+		}
+		return a < b
+	case aNumeric:
+		return true
+	case bNumeric:
+		return false
+	default:
+		return a < b
+	}
+}
+
+func numericPointID(id string) (int, bool) {
+	n, err := strconv.Atoi(id)
+	return n, err == nil
 }
 
 func (p *Project) SortedLines() []Line {
@@ -139,8 +205,33 @@ func (p *Project) SortedLines() []Line {
 	for _, line := range p.Lines {
 		lines = append(lines, line)
 	}
-	sort.Slice(lines, func(i, j int) bool { return lines[i].ID < lines[j].ID })
+	sort.Slice(lines, func(i, j int) bool { return LineIDLess(lines[i].ID, lines[j].ID) })
 	return lines
+}
+
+func LineIDLess(a, b string) bool {
+	aPrefix, an, aNumeric := numericSuffixID(a)
+	bPrefix, bn, bNumeric := numericSuffixID(b)
+	if aNumeric && bNumeric && aPrefix == bPrefix {
+		if an != bn {
+			return an < bn
+		}
+		return a < b
+	}
+	return a < b
+}
+
+func numericSuffixID(id string) (string, int, bool) {
+	end := len(id)
+	start := end
+	for start > 0 && id[start-1] >= '0' && id[start-1] <= '9' {
+		start--
+	}
+	if start == end {
+		return id, 0, false
+	}
+	n, err := strconv.Atoi(id[start:])
+	return id[:start], n, err == nil
 }
 
 func (p *Project) NextPointID() string {
@@ -199,4 +290,22 @@ func (p *Project) SortedContourSets() []ContourSet {
 	}
 	sort.Slice(sets, func(i, j int) bool { return sets[i].ID < sets[j].ID })
 	return sets
+}
+
+func (p *Project) MarkContoursStale(reason string) {
+	for id, set := range p.ContourSets {
+		if set.Generation == nil {
+			continue
+		}
+		set.Stale = true
+		set.StaleReason = reason
+		p.ContourSets[id] = set
+	}
+}
+
+func (p *Project) CoordinateLabel() string {
+	if p.GridGround == nil {
+		return ""
+	}
+	return p.GridGround.GridSystem
 }

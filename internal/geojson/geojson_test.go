@@ -14,7 +14,7 @@ func TestExportGeoJSONPointsAndLines(t *testing.T) {
 	z2 := 6.5
 	p.Points["1"] = geom.Point{ID: "1", Easting: 200, Northing: 100, Elevation: &z1, Code: "PEG", Description: "corner"}
 	p.Points["2"] = geom.Point{ID: "2", Easting: 210, Northing: 110, Elevation: &z2}
-	p.Lines["L1"] = project.Line{ID: "L1", From: "1", To: "2", Code: "BOUNDARY", Description: "edge"}
+	p.Lines["L1"] = project.Line{ID: "L1", From: "1", To: "2", Code: "BOUNDARY", Description: "edge", TerrainRole: "ridge"}
 
 	var out strings.Builder
 	if err := Export(&out, p); err != nil {
@@ -34,6 +34,7 @@ func TestExportGeoJSONPointsAndLines(t *testing.T) {
 		`"description": "corner"`,
 		`"from": "1"`,
 		`"to": "2"`,
+		`"terrain_role": "ridge"`,
 	} {
 		if !strings.Contains(got, want) {
 			t.Fatalf("geojson missing %q:\n%s", want, got)
@@ -170,7 +171,7 @@ func TestGeoJSONRoundTripPreservesLinePointReferences(t *testing.T) {
 	source := project.New("test")
 	source.Points["1"] = geom.Point{ID: "1", Easting: 0, Northing: 0}
 	source.Points["2"] = geom.Point{ID: "2", Easting: 10, Northing: 0}
-	source.Lines["L1"] = project.Line{ID: "L1", From: "1", To: "2", Code: "BOUNDARY"}
+	source.Lines["L1"] = project.Line{ID: "L1", From: "1", To: "2", Code: "BOUNDARY", TerrainRole: "drain"}
 
 	var out strings.Builder
 	if err := Export(&out, source); err != nil {
@@ -190,6 +191,9 @@ func TestGeoJSONRoundTripPreservesLinePointReferences(t *testing.T) {
 	}
 	if got := dest.Lines["L1"]; got.From != "1" || got.To != "2" {
 		t.Fatalf("line=%+v want from=1 to=2", got)
+	}
+	if dest.Lines["L1"].TerrainRole != "drain" {
+		t.Fatalf("terrain role=%q want drain", dest.Lines["L1"].TerrainRole)
 	}
 }
 

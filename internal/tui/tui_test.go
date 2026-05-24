@@ -95,6 +95,30 @@ func TestExecuteCommandFilterSortAndHelp(t *testing.T) {
 	}
 }
 
+func TestMouseWheelScrollsHelpViewport(t *testing.T) {
+	m := NewModel(project.New("test"), "")
+	updated, _ := m.Update(tea.WindowSizeMsg{Width: 80, Height: 18})
+	m = updated.(Model)
+	m.ExecuteCommand("help")
+	if m.mode != ModeHelp {
+		t.Fatal("expected help mode")
+	}
+
+	updated, _ = m.Update(tea.MouseMsg{
+		X:      10,
+		Y:      8,
+		Button: tea.MouseButtonWheelDown,
+		Action: tea.MouseActionPress,
+	})
+	m = updated.(Model)
+	if m.help.YOffset == 0 {
+		t.Fatal("expected help viewport wheel scroll")
+	}
+	if !strings.Contains(m.View(), "mouse wheel scroll") {
+		t.Fatalf("help instructions should mention mouse scrolling:\n%s", m.View())
+	}
+}
+
 func TestDescriptionCommandUpdatesStatusAndPersists(t *testing.T) {
 	dir := t.TempDir()
 	projectPath := filepath.Join(dir, "job")
@@ -157,6 +181,39 @@ func TestPrecisionCommandRejectsInvalidPrecision(t *testing.T) {
 	m.ExecuteCommand("precision 9")
 	if m.lastErr == "" {
 		t.Fatal("expected precision error")
+	}
+}
+
+func TestScaleCommandShowsCoordinateModeAndExportWarning(t *testing.T) {
+	dir := t.TempDir()
+	m := NewModel(project.New("test"), "")
+	m.ExecuteCommand("pt add 1 500000 6500000")
+	m.ExecuteCommand("scale apply 1 csf=0.9996 system=MGA2020_ZONE50")
+	if m.lastErr != "" {
+		t.Fatalf("scale error: %s", m.lastErr)
+	}
+	if !strings.Contains(m.statusLine(1), "coords=MGA2020_ZONE50") {
+		t.Fatalf("status line=%q", m.statusLine(1))
+	}
+	m.ExecuteCommand("export csv " + filepath.Join(dir, "points"))
+	if !strings.Contains(m.message, "coords=MGA2020_ZONE50") {
+		t.Fatalf("message=%q", m.message)
+	}
+	m.ExecuteCommand("scale reverse")
+	if strings.Contains(m.statusLine(1), "coords=") {
+		t.Fatalf("status line should not keep scale label after reverse: %q", m.statusLine(1))
+	}
+}
+
+func TestScaleWithoutSystemLabelDoesNotExposeInternalMode(t *testing.T) {
+	m := NewModel(project.New("test"), "")
+	m.ExecuteCommand("pt add 1 500000 6500000")
+	m.ExecuteCommand("scale apply 1 csf=0.9996")
+	if m.lastErr != "" {
+		t.Fatalf("scale error: %s", m.lastErr)
+	}
+	if strings.Contains(m.statusLine(1), "coords=") || strings.Contains(m.statusLine(1), "local_ground") {
+		t.Fatalf("status line should not expose internal scale mode: %q", m.statusLine(1))
 	}
 }
 
@@ -384,6 +441,11 @@ func TestMapLineZoomFitAndEscKeys(t *testing.T) {
 	if !m.mapState.ShowLines {
 		t.Fatal("expected lines on")
 	}
+	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'c'}})
+	m = updated.(Model)
+	if !m.mapState.ShowContours {
+		t.Fatal("expected contours on")
+	}
 	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'+'}})
 	m = updated.(Model)
 	if m.mapState.Zoom <= 1 {
@@ -415,6 +477,10 @@ func TestMapCommandsChangeState(t *testing.T) {
 	if m.mode != ModeMap || !m.mapState.ShowLines {
 		t.Fatalf("mode=%v state=%+v", m.mode, m.mapState)
 	}
+	m.ExecuteCommand("map contours")
+	if !m.mapState.ShowContours {
+		t.Fatalf("state=%+v want contours shown", m.mapState)
+	}
 	m.ExecuteCommand("map zoom in")
 	if m.mapState.Zoom <= 1 {
 		t.Fatalf("zoom=%f want > 1", m.mapState.Zoom)
@@ -432,6 +498,7 @@ func TestProjectChangesResetMapState(t *testing.T) {
 	m.project.Points["1"] = geom.Point{ID: "1", Northing: 0, Easting: 0}
 	m.project.Points["2"] = geom.Point{ID: "2", Northing: 0, Easting: 10}
 	m.ExecuteCommand("map lines")
+	m.ExecuteCommand("map contours")
 	m.ExecuteCommand("map zoom in")
 	m.ExecuteCommand("save " + path)
 	if m.lastErr != "" {
@@ -439,11 +506,12 @@ func TestProjectChangesResetMapState(t *testing.T) {
 	}
 
 	m.ExecuteCommand("new next")
-	if m.mapState.Zoom != 1 || m.mapState.Custom || m.mapState.ShowLines {
+	if m.mapState.Zoom != 1 || m.mapState.Custom || m.mapState.ShowLines || m.mapState.ShowContours {
 		t.Fatalf("new should reset map state: %+v", m.mapState)
 	}
 
 	m.ExecuteCommand("map lines")
+	m.ExecuteCommand("map contours")
 	m.ExecuteCommand("map zoom in")
 	m.ExecuteCommand("open " + path)
 	if m.lastErr != "" {
@@ -452,7 +520,7 @@ func TestProjectChangesResetMapState(t *testing.T) {
 	if m.path != path+".srv" {
 		t.Fatalf("path=%q want %q", m.path, path+".srv")
 	}
-	if m.mapState.Zoom != 1 || m.mapState.Custom || m.mapState.ShowLines {
+	if m.mapState.Zoom != 1 || m.mapState.Custom || m.mapState.ShowLines || m.mapState.ShowContours {
 		t.Fatalf("open should reset map state: %+v", m.mapState)
 	}
 }

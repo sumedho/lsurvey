@@ -14,13 +14,18 @@ import (
 const eps = 1e-9
 
 type Options struct {
-	ID            string
-	Interval      float64
-	Base          *float64
-	IndexEvery    int
-	IndexEverySet bool
-	BreaklineIDs  []string
-	UseBreakline  bool
+	ID             string
+	Interval       float64
+	Base           *float64
+	IndexEvery     int
+	IndexEverySet  bool
+	BreaklineIDs   []string
+	UseBreakline   bool
+	BreaklineMode  string
+	BoundaryCodes  []string
+	ExclusionCodes []string
+	MaxEdge        *float64
+	Smooth         int
 }
 
 type vertex struct {
@@ -58,7 +63,13 @@ func Generate(p *project.Project, opts Options) (project.ContourSet, error) {
 	if opts.IndexEvery < 0 {
 		return project.ContourSet{}, fmt.Errorf("index interval must be zero or greater")
 	}
-	points, err := elevatedPoints(p)
+	if opts.MaxEdge != nil && *opts.MaxEdge <= 0 {
+		return project.ContourSet{}, fmt.Errorf("maximum edge distance must be greater than zero")
+	}
+	if opts.Smooth < 0 || opts.Smooth > 3 {
+		return project.ContourSet{}, fmt.Errorf("smoothing iterations must be between zero and three")
+	}
+	points, diagnostics, err := elevatedPoints(p)
 	if err != nil {
 		return project.ContourSet{}, err
 	}
@@ -76,18 +87,37 @@ func Generate(p *project.Project, opts Options) (project.ContourSet, error) {
 			return project.ContourSet{}, err
 		}
 	}
+	effectiveMaxEdge := maximumEdgeThreshold(points, opts.MaxEdge)
+	diagnostics = append(diagnostics, longEdgeDiagnostics(points, tris, effectiveMaxEdge)...)
+	clip, err := resolveClipRegions(p, opts)
+	if err != nil {
+		return project.ContourSet{}, err
+	}
 
 	levels := contourLevels(points, opts.Interval, opts.Base)
 	segs := sliceTriangles(points, tris, levels, opts)
-	polylines := joinSegments(segs)
-	sort.Slice(polylines, func(i, j int) bool {
-		if math.Abs(polylines[i].Elevation-polylines[j].Elevation) > eps {
-			return polylines[i].Elevation < polylines[j].Elevation
+	segs = clipSegments(segs, clip)
+	segs = deduplicateSegments(segs)
+	rawPolylines := joinSegments(segs)
+	sort.Slice(rawPolylines, func(i, j int) bool {
+		if math.Abs(rawPolylines[i].Elevation-rawPolylines[j].Elevation) > eps {
+			return rawPolylines[i].Elevation < rawPolylines[j].Elevation
 		}
-		return polylines[i].ID < polylines[j].ID
+		return rawPolylines[i].ID < rawPolylines[j].ID
 	})
-	for i := range polylines {
-		polylines[i].ID = fmt.Sprintf("%s-%04d", opts.ID, i+1)
+	for i := range rawPolylines {
+		rawPolylines[i].ID = fmt.Sprintf("%s-%04d", opts.ID, i+1)
+	}
+	if len(clip.Boundary) == 0 {
+		diagnostics = append(diagnostics, hullContactDiagnostics(points, tris, rawPolylines)...)
+	}
+	polylines := rawPolylines
+	var storedRaw []project.ContourPolyline
+	if opts.Smooth > 0 {
+		storedRaw = clonePolylines(rawPolylines)
+		var smoothDiagnostics []project.ContourDiagnostic
+		polylines, smoothDiagnostics = smoothPolylines(rawPolylines, opts.Smooth, clip, p, breaklines)
+		diagnostics = append(diagnostics, smoothDiagnostics...)
 	}
 
 	sourceIDs := make([]string, 0, len(points))
@@ -95,24 +125,68 @@ func Generate(p *project.Project, opts Options) (project.ContourSet, error) {
 		sourceIDs = append(sourceIDs, pt.ID)
 	}
 	breaklineIDs := make([]string, 0, len(breaklines))
+	breaklineRoles := make(map[string]string)
 	for _, bl := range breaklines {
 		breaklineIDs = append(breaklineIDs, bl.ID)
+		if role := p.Lines[bl.ID].TerrainRole; role != "" {
+			breaklineRoles[bl.ID] = role
+		}
 	}
 	sort.Strings(breaklineIDs)
 	base := levels.Base
 	if opts.Base != nil {
 		base = *opts.Base
 	}
+	mode := opts.BreaklineMode
+	if mode == "" {
+		if opts.UseBreakline {
+			if len(opts.BreaklineIDs) > 0 {
+				mode = "ids"
+			} else {
+				mode = "all"
+			}
+		} else {
+			mode = "none"
+		}
+	}
+	spec := &project.ContourGenerationSpec{
+		Interval:       opts.Interval,
+		Base:           cloneFloat(opts.Base),
+		IndexEvery:     opts.IndexEvery,
+		IndexEverySet:  opts.IndexEverySet,
+		BreaklineMode:  mode,
+		BreaklineIDs:   append([]string(nil), opts.BreaklineIDs...),
+		BoundaryCodes:  append([]string(nil), opts.BoundaryCodes...),
+		ExclusionCodes: append([]string(nil), opts.ExclusionCodes...),
+		MaxEdge:        cloneFloat(opts.MaxEdge),
+		Smooth:         opts.Smooth,
+	}
 	return project.ContourSet{
-		ID:           opts.ID,
-		Interval:     opts.Interval,
-		Base:         base,
-		IndexEvery:   opts.IndexEvery,
-		SourcePoints: sourceIDs,
-		Breaklines:   breaklineIDs,
-		GeneratedAt:  time.Now().UTC(),
-		Polylines:    polylines,
+		ID:               opts.ID,
+		Interval:         opts.Interval,
+		Base:             base,
+		IndexEvery:       opts.IndexEvery,
+		SourcePoints:     sourceIDs,
+		Breaklines:       breaklineIDs,
+		BreaklineRoles:   breaklineRoles,
+		BoundaryLines:    clip.BoundaryLines,
+		ExclusionLines:   clip.ExclusionLines,
+		Generation:       spec,
+		GeneratedAt:      time.Now().UTC(),
+		TriangleCount:    len(tris),
+		EffectiveMaxEdge: effectiveMaxEdge,
+		Diagnostics:      diagnostics,
+		RawPolylines:     storedRaw,
+		Polylines:        polylines,
 	}, nil
+}
+
+func cloneFloat(v *float64) *float64 {
+	if v == nil {
+		return nil
+	}
+	out := *v
+	return &out
 }
 
 type levelSet struct {
@@ -120,26 +194,34 @@ type levelSet struct {
 	Base   float64
 }
 
-func elevatedPoints(p *project.Project) ([]vertex, error) {
+func elevatedPoints(p *project.Project) ([]vertex, []project.ContourDiagnostic, error) {
 	points := p.SortedPoints()
 	out := make([]vertex, 0, len(points))
 	seen := map[string]vertex{}
+	var diagnostics []project.ContourDiagnostic
 	for _, pt := range points {
 		if pt.Elevation == nil {
 			continue
 		}
 		key := coordKey(pt.Easting, pt.Northing)
 		if prev, ok := seen[key]; ok && math.Abs(prev.Z-*pt.Elevation) > eps {
-			return nil, fmt.Errorf("points %q and %q share coordinates with different elevations", prev.ID, pt.ID)
+			return nil, nil, fmt.Errorf("points %q and %q share coordinates with different elevations", prev.ID, pt.ID)
+		} else if ok {
+			diagnostics = append(diagnostics, project.ContourDiagnostic{
+				Code:     "duplicate_xy",
+				Message:  fmt.Sprintf("ignored coincident elevated point %s; using %s", pt.ID, prev.ID),
+				PointIDs: []string{prev.ID, pt.ID},
+			})
+			continue
 		}
 		v := vertex{ID: pt.ID, N: pt.Northing, E: pt.Easting, Z: *pt.Elevation}
 		seen[key] = v
 		out = append(out, v)
 	}
 	if len(out) < 3 {
-		return nil, fmt.Errorf("at least 3 elevated points are required")
+		return nil, nil, fmt.Errorf("at least 3 elevated points are required")
 	}
-	return out, nil
+	return out, diagnostics, nil
 }
 
 func coordKey(e, n float64) string {
@@ -193,6 +275,31 @@ func sliceTriangles(points []vertex, tris []triangle, levels levelSet, opts Opti
 		}
 	}
 	return out
+}
+
+func deduplicateSegments(segments []segment) []segment {
+	seen := map[string]bool{}
+	out := make([]segment, 0, len(segments))
+	for _, seg := range segments {
+		a, b := seg.A, seg.B
+		if vertexLess(b, a) {
+			a, b = b, a
+		}
+		key := fmt.Sprintf("%.9f:%.9f:%.9f:%.9f:%.9f", seg.Level, a.Easting, a.Northing, b.Easting, b.Northing)
+		if seen[key] {
+			continue
+		}
+		seen[key] = true
+		out = append(out, seg)
+	}
+	return out
+}
+
+func vertexLess(a, b project.ContourVertex) bool {
+	if math.Abs(a.Easting-b.Easting) > eps {
+		return a.Easting < b.Easting
+	}
+	return a.Northing < b.Northing
 }
 
 func triangleContourPoints(vs []vertex, level float64) []project.ContourVertex {

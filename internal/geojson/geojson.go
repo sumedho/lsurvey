@@ -102,6 +102,9 @@ func Import(r io.Reader, p *project.Project) (int, int, error) {
 
 	p.Points = state.points
 	p.Lines = state.lines
+	if pointCount > 0 || lineCount > 0 {
+		p.MarkContoursStale("imported terrain input changed")
+	}
 	return pointCount, lineCount, nil
 }
 
@@ -170,6 +173,7 @@ func exportLineFeature(line project.Line, from, to geom.Point) feature {
 			"id":           line.ID,
 			"code":         line.Code,
 			"description":  line.Description,
+			"terrain_role": line.TerrainRole,
 			"from":         line.From,
 			"to":           line.To,
 		},
@@ -298,6 +302,10 @@ func importRawLine(state importState, feat feature, rawCoords []json.RawMessage,
 	}
 	code := propertyString(feat.Properties, "code")
 	description := propertyString(feat.Properties, "description", "desc")
+	terrainRole := propertyString(feat.Properties, "terrain_role")
+	if terrainRole != "" && terrainRole != "standard" && terrainRole != "ridge" && terrainRole != "drain" {
+		return 0, 0, fmt.Errorf("invalid terrain_role %q", terrainRole)
+	}
 
 	lineCount := 0
 	segments := len(vertices) - 1
@@ -309,6 +317,7 @@ func importRawLine(state importState, feat feature, rawCoords []json.RawMessage,
 			To:          vertices[i+1].ID,
 			Code:        code,
 			Description: description,
+			TerrainRole: terrainRole,
 		}
 		lineCount++
 	}

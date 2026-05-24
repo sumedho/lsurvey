@@ -18,12 +18,21 @@ func validateBreaklines(p *project.Project, opts Options, points []vertex) ([]br
 		return nil, nil
 	}
 	index := map[string]int{}
+	byCoordinate := map[string]int{}
 	for i, pt := range points {
 		index[pt.ID] = i
+		byCoordinate[coordKey(pt.E, pt.N)] = i
 	}
 	ids := opts.BreaklineIDs
 	if len(ids) == 0 {
+		clipCodes := map[string]bool{}
+		for _, code := range append(append([]string(nil), opts.BoundaryCodes...), opts.ExclusionCodes...) {
+			clipCodes[code] = true
+		}
 		for _, line := range p.SortedLines() {
+			if clipCodes[line.Code] {
+				continue
+			}
 			ids = append(ids, line.ID)
 		}
 	}
@@ -40,9 +49,19 @@ func validateBreaklines(p *project.Project, opts Options, points []vertex) ([]br
 		}
 		a, ok := index[line.From]
 		if !ok {
+			if pt, found := p.Points[line.From]; found && pt.Elevation != nil {
+				a, ok = byCoordinate[coordKey(pt.Easting, pt.Northing)]
+			}
+		}
+		if !ok {
 			return nil, fmt.Errorf("breakline %q from point %q has no elevation", id, line.From)
 		}
 		b, ok := index[line.To]
+		if !ok {
+			if pt, found := p.Points[line.To]; found && pt.Elevation != nil {
+				b, ok = byCoordinate[coordKey(pt.Easting, pt.Northing)]
+			}
+		}
 		if !ok {
 			return nil, fmt.Errorf("breakline %q to point %q has no elevation", id, line.To)
 		}

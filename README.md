@@ -123,6 +123,7 @@ The command line is the main way to work with the project. Type `help` or press
 Map keys:
 
 - Arrow keys: pan.
+- `c`: toggle stored contour overlays.
 - `+` or `=`: zoom in.
 - `-`: zoom out.
 - `f`: fit to all points.
@@ -186,8 +187,8 @@ ID.
 ## Line Commands
 
 ```text
-line add <id> <p1> <p2> [code]
-line edit <id> [from=] [to=] [code=] [desc=]
+line add <id> <p1> <p2> [code] [terrain=standard|ridge|drain]
+line edit <id> [from=] [to=] [code=] [desc=] [terrain=none|standard|ridge|drain]
 line del <id>
 line list
 ```
@@ -214,6 +215,8 @@ rad3d <from> <azimuth|bearing> <slope_distance> <zenith> as <id> [code]
 midpoint <p1> <p2> as <id> [code]
 offset <p1> <p2> <offset> <chainage> as <id> [code]
 offset <line_id> <offset> <chainage> as <id> [code]
+scale apply <base> csf=<factor> [system=<label>]
+scale reverse
 transform fit <src1> <dst1> <src2> <dst2> [<srcN> <dstN> ...]
 ```
 
@@ -228,6 +231,8 @@ rad3d 1 90.0000 10 90.0000 as 4 SHOT
 midpoint 1 2 as 10 MID
 offset 1 2 5 25 as 20 OFF
 offset L1 5 25 as 20 OFF
+scale apply 1 csf=0.9996 system=MGA2020_ZONE50
+scale reverse
 transform fit A1 B1 A2 B2 A3 B3
 ```
 
@@ -242,6 +247,13 @@ horizontal; smaller angles go up and larger angles go down.
 
 Positive offset is calculated to the left of the direction from the first point
 to the second point, or from the stored line's `from` point to its `to` point.
+
+`scale apply` converts horizontal MGA-style grid coordinates around a base
+point using a supplied combined scale factor and optional grid label. `scale
+reverse` uses the saved anchor and factor, then removes the active scale label.
+Elevations are not scaled, and TUI export messages report an applied scale
+while it is active. A subsequent whole-project `shift` or `rotate` also moves
+the active scale anchor so reversal remains consistent.
 
 `transform fit` calculates a source-to-target similarity transformation without
 modifying project data. It reports easting/northing shift (`dx`, `dy`), signed
@@ -300,7 +312,8 @@ apply compass or transit adjustment.
 ## Contour Commands
 
 ```text
-contour gen <id> <interval> [base=<elev>] [index=<n>] [breaklines=all|none|ids:L1,L2]
+contour gen <id> <interval> [base=<elev>] [index=<n>] [breaklines=all|none|ids:L1,L2] [boundary=codes:C1,C2] [exclude=codes:C3,C4] [maxedge=<distance>] [smooth=<0..3>]
+contour regen <id>
 contour list
 contour info <id>
 contour del <id>
@@ -313,6 +326,9 @@ contour gen C1 1
 contour gen C1 0.5
 contour gen C1 0.5 base=100 index=5 breaklines=all
 contour gen C2 1 breaklines=ids:B1,B2
+contour gen C3 0.5 boundary=codes:SITE exclude=codes:POND
+contour gen C4 0.5 boundary=codes:SITE maxedge=30 smooth=1
+contour regen C3
 contour info C1
 contour del C1
 ```
@@ -333,8 +349,31 @@ points only, or `breaklines=ids:L1,L2` to use selected lines. Breakline endpoint
 points must have elevations, and selected breaklines must not cross except at
 shared endpoints.
 
-Generated contours are stored in the `.srv` project. If points or breaklines are
-edited later, rerun `contour gen` to replace the contour set.
+Use `boundary=codes:` to clip contours to exactly one closed ring assembled
+from stored lines with the selected codes. Use `exclude=codes:` for one or more
+closed exclusion rings. Clipping lines may use 2D points and are not treated as
+implicit breaklines when selected as clipping input.
+
+Lines may carry terrain intent with `terrain=standard|ridge|drain` on `line add`
+or `line edit`. These roles are stored for reproducibility; in the current
+terrain model each role constrains the TIN using the same interpolation.
+
+Generated contours are stored in the `.srv` project with their generation
+options. Relevant point or line edits mark stored contours stale; run
+`contour regen <id>` to recompute them from current geometry.
+
+Generation stores advisory terrain diagnostics. Coincident elevated points at
+the same elevation are reduced to one TIN vertex with a warning; conflicting
+elevations still fail. Long TIN edges are warned using `maxedge=<distance>`, or
+an automatic threshold of five times the median nearest-point spacing when
+omitted. Unless an explicit boundary is supplied, contours reaching the TIN
+hull are also warned.
+
+Use `smooth=<0..3>` to opt into conservative Chaikin smoothing. `smooth=0` is
+the default. Smoothed contours preserve fixed boundary, exclusion, and
+breakline contacts; any unsafe smoothed contour falls back to raw geometry with
+a warning. When smoothing is enabled, raw polylines are retained in the
+project, while DXF exports the smoothed presentation polylines.
 
 ## TUI Commands
 
@@ -344,6 +383,7 @@ clear filter
 sort <id|north|east|elev|code|desc> [asc|desc]
 map
 map lines
+map contours
 map fit
 map zoom in
 map zoom out
@@ -360,6 +400,7 @@ sort code
 sort north desc
 map
 map lines
+map contours
 map fit
 help rad
 ```
@@ -410,7 +451,8 @@ DXF export writes:
 - Stored lines in pink.
 - Stored contour polylines on `CONTOURS` and `CONTOURS_INDEX` layers.
 - Contour elevation labels on `CONTOUR_LABELS` and `CONTOUR_LABELS_INDEX`
-  layers, placed at the end of each contour line.
+  layers, placed along readable contour paths and suppressed where insufficient
+  space exists.
 
 Minor contours use AutoCAD color index 8. Index contours use AutoCAD color
 index 1, a heavier DXF lineweight, and a wider polyline width.
@@ -461,6 +503,7 @@ rad 1 N 45.0000 E 50 as 3 CALC
 angle 2 1 3
 offset B1 5 25 as 20 OFF
 map lines
+map contours
 save lot42
 export dxf lot42
 export csv lot42_points
@@ -479,6 +522,7 @@ Project files are JSON documents with a `.srv` extension. They store:
 - Lines.
 - Contour sets.
 - Traverse state.
+- Grid-to-ground conversion metadata, when used.
 - Command history records.
 
 The file format is intended to remain readable and versioned, but users should

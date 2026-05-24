@@ -53,18 +53,18 @@ func FilterAndSortPoints(p *project.Project, filter string, field SortField, asc
 func pointLess(a, b geom.Point, field SortField) bool {
 	switch field {
 	case SortNorth:
-		return a.Northing < b.Northing || a.Northing == b.Northing && a.ID < b.ID
+		return a.Northing < b.Northing || a.Northing == b.Northing && project.PointIDLess(a.ID, b.ID)
 	case SortEast:
-		return a.Easting < b.Easting || a.Easting == b.Easting && a.ID < b.ID
+		return a.Easting < b.Easting || a.Easting == b.Easting && project.PointIDLess(a.ID, b.ID)
 	case SortElev:
 		az, bz := elevationValue(a), elevationValue(b)
-		return az < bz || az == bz && a.ID < b.ID
+		return az < bz || az == bz && project.PointIDLess(a.ID, b.ID)
 	case SortCode:
-		return a.Code < b.Code || a.Code == b.Code && a.ID < b.ID
+		return a.Code < b.Code || a.Code == b.Code && project.PointIDLess(a.ID, b.ID)
 	case SortDesc:
-		return a.Description < b.Description || a.Description == b.Description && a.ID < b.ID
+		return a.Description < b.Description || a.Description == b.Description && project.PointIDLess(a.ID, b.ID)
 	default:
-		return a.ID < b.ID
+		return project.PointIDLess(a.ID, b.ID)
 	}
 }
 

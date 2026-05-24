@@ -159,6 +159,11 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		return m, nil
 	case tea.MouseMsg:
+		if m.mode == ModeHelp && isWheelMouse(msg) {
+			var cmd tea.Cmd
+			m.help, cmd = m.help.Update(msg)
+			return m, cmd
+		}
 		if m.mode == ModeMain {
 			if handled, cmd := m.handleMainMouse(msg); handled {
 				return m, cmd
@@ -200,6 +205,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			case "l":
 				m.mapState.ShowLines = !m.mapState.ShowLines
 				return m, nil
+			case "c":
+				m.mapState.ShowContours = !m.mapState.ShowContours
+				return m, nil
 			case "+", "=":
 				m.mapState.zoomBy(m.project, 1.5)
 				return m, nil
@@ -207,16 +215,20 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.mapState.zoomBy(m.project, 1.0/1.5)
 				return m, nil
 			case "left":
-				m.mapState.panBy(m.project, -mapPanFraction, 0)
+				width, height := mapGridSize(max(60, m.width), max(18, m.height))
+				m.mapState.panBy(m.project, width, height, -mapPanFraction, 0)
 				return m, nil
 			case "right":
-				m.mapState.panBy(m.project, mapPanFraction, 0)
+				width, height := mapGridSize(max(60, m.width), max(18, m.height))
+				m.mapState.panBy(m.project, width, height, mapPanFraction, 0)
 				return m, nil
 			case "up":
-				m.mapState.panBy(m.project, 0, mapPanFraction)
+				width, height := mapGridSize(max(60, m.width), max(18, m.height))
+				m.mapState.panBy(m.project, width, height, 0, mapPanFraction)
 				return m, nil
 			case "down":
-				m.mapState.panBy(m.project, 0, -mapPanFraction)
+				width, height := mapGridSize(max(60, m.width), max(18, m.height))
+				m.mapState.panBy(m.project, width, height, 0, -mapPanFraction)
 				return m, nil
 			case "f":
 				m.mapState.fit()
@@ -302,7 +314,7 @@ func (m Model) View() string {
 	if m.mode == ModeHelp {
 		width := max(60, m.width)
 		height := max(18, m.height)
-		body := mutedStyle.Render("Esc closes, arrows/page keys scroll") + "\n" + m.help.View()
+		body := mutedStyle.Render("Esc closes, arrows/page keys or mouse wheel scroll") + "\n" + m.help.View()
 		return box("Help", body, width, height)
 	}
 	if m.mode == ModeMap {
@@ -448,21 +460,21 @@ func (m *Model) ExecuteCommand(command string) tea.Cmd {
 				m.setError(err.Error())
 				return nil
 			}
-			m.message = "exported " + path
+			m.message = "exported " + path + m.coordinateSuffix()
 		case "csv":
 			path := paths.CSV(fields[2])
 			if err := csvpoints.ExportFile(path, m.project); err != nil {
 				m.setError(err.Error())
 				return nil
 			}
-			m.message = "exported " + path
+			m.message = "exported " + path + m.coordinateSuffix()
 		case "geojson":
 			path := paths.GeoJSON(fields[2])
 			if err := geojson.ExportFile(path, m.project); err != nil {
 				m.setError(err.Error())
 				return nil
 			}
-			m.message = "exported " + path
+			m.message = "exported " + path + m.coordinateSuffix()
 		default:
 			m.setError("usage: export dxf|csv|geojson <file>")
 		}
@@ -590,6 +602,12 @@ func (m *Model) handleMapCommand(fields []string) {
 		m.message = "map lines " + onOff(m.mapState.ShowLines)
 		return
 	}
+	if len(fields) == 2 && fields[1] == "contours" {
+		m.mapState.ShowContours = !m.mapState.ShowContours
+		m.mode = ModeMap
+		m.message = "map contours " + onOff(m.mapState.ShowContours)
+		return
+	}
 	if len(fields) == 2 && fields[1] == "fit" {
 		m.mapState.fit()
 		m.mode = ModeMap
@@ -607,11 +625,11 @@ func (m *Model) handleMapCommand(fields []string) {
 			m.mode = ModeMap
 			m.message = "map zoom out"
 		default:
-			m.setError("usage: map [lines|fit|zoom in|zoom out]")
+			m.setError("usage: map [lines|contours|fit|zoom in|zoom out]")
 		}
 		return
 	}
-	m.setError("usage: map [lines|fit|zoom in|zoom out]")
+	m.setError("usage: map [lines|contours|fit|zoom in|zoom out]")
 }
 
 func (m *Model) handleSort(fields []string) {
@@ -880,8 +898,8 @@ func (m Model) infoText(visible int) string {
 	if strings.TrimSpace(m.project.Description) != "" {
 		label = m.project.Description
 	}
-	info := fmt.Sprintf("%s  path=%s  points=%d/%d  lines=%d  contours=%d  precision=%d  filter=%s  sort=%s %s  %s",
-		label, path, visible, len(m.project.Points), len(m.project.Lines), len(m.project.ContourSets), m.project.DisplayPrecision(), filter, m.sort, m.sortDirection(), dirty)
+	info := fmt.Sprintf("%s  path=%s  points=%d/%d  lines=%d  contours=%d  precision=%d%s  filter=%s  sort=%s %s  %s",
+		label, path, visible, len(m.project.Points), len(m.project.Lines), len(m.project.ContourSets), m.project.DisplayPrecision(), m.coordinateSuffix(), filter, m.sort, m.sortDirection(), dirty)
 	if m.project.Traverse != nil {
 		traverse := fmt.Sprintf("  trav current=%s next=%s", m.project.Traverse.Current, m.project.NextPointID())
 		if m.project.Traverse.Close != "" {
@@ -890,6 +908,14 @@ func (m Model) infoText(visible int) string {
 		info += traverse
 	}
 	return info
+}
+
+func (m Model) coordinateSuffix() string {
+	label := m.project.CoordinateLabel()
+	if label == "" {
+		return ""
+	}
+	return "  coords=" + label
 }
 
 func writeDXF(path string, p *project.Project) error {

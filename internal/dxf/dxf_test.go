@@ -82,17 +82,73 @@ func TestWriteIncludesPointsLabelsLinesAndCodeLayers(t *testing.T) {
 	}
 }
 
-func TestContourLabelPointUsesPolylineEnd(t *testing.T) {
-	got, ok := contourLabelPoint([]project.ContourVertex{
-		{Northing: 0, Easting: 0},
-		{Northing: 0, Easting: 10},
-		{Northing: 10, Easting: 10},
+func TestContourLabelUsesPathMidpointAndReadableRotation(t *testing.T) {
+	got, _, ok := contourTextLabel(project.ContourPolyline{
+		Elevation: 5,
+		Vertices: []project.ContourVertex{
+			{Northing: 0, Easting: 0},
+			{Northing: 0, Easting: 6},
+			{Northing: 10, Easting: 6},
+		},
 	})
 	if !ok {
 		t.Fatal("expected label point")
 	}
-	if got.Northing != 10 || got.Easting != 10 {
-		t.Fatalf("point=%+v want final contour vertex", got)
+	if got.Northing != 2 || got.Easting != 6 || got.Rotation != 90 {
+		t.Fatalf("label=%+v want midpoint on vertical segment", got)
+	}
+	reversed, _, ok := contourTextLabel(project.ContourPolyline{
+		Elevation: 5,
+		Vertices:  []project.ContourVertex{{Easting: 10, Northing: 0}, {Easting: 0, Northing: -10}},
+	})
+	if !ok || reversed.Rotation != 45 {
+		t.Fatalf("label=%+v want normalized readable rotation", reversed)
+	}
+}
+
+func TestContourLabelRejectsShortPolyline(t *testing.T) {
+	if _, _, ok := contourTextLabel(project.ContourPolyline{
+		Elevation: 100,
+		Vertices:  []project.ContourVertex{{Easting: 0}, {Easting: 1}},
+	}); ok {
+		t.Fatal("expected short contour to be unlabeled")
+	}
+}
+
+func TestWriteSuppressesOverlappingContourLabels(t *testing.T) {
+	p := project.New("test")
+	p.ContourSets["C1"] = project.ContourSet{
+		Polylines: []project.ContourPolyline{
+			{ID: "1", Elevation: 10, Vertices: []project.ContourVertex{{Easting: 0}, {Easting: 20}}},
+			{ID: "2", Elevation: 11, Vertices: []project.ContourVertex{{Easting: 0, Northing: 0.1}, {Easting: 20, Northing: 0.1}}},
+		},
+	}
+	var out strings.Builder
+	if err := Write(&out, p); err != nil {
+		t.Fatal(err)
+	}
+	if got := strings.Count(out.String(), "8\nCONTOUR_LABELS\n"); got != 1 {
+		t.Fatalf("label entities=%d want one:\n%s", got, out.String())
+	}
+}
+
+func TestWriteUsesSmoothedPolylineRepresentationWhenRawIsRetained(t *testing.T) {
+	p := project.New("test")
+	p.ContourSets["C1"] = project.ContourSet{
+		RawPolylines: []project.ContourPolyline{{
+			Vertices: []project.ContourVertex{{Easting: 1, Northing: 1}, {Easting: 2, Northing: 2}},
+		}},
+		Polylines: []project.ContourPolyline{{
+			Vertices: []project.ContourVertex{{Easting: 10, Northing: 10}, {Easting: 20, Northing: 20}},
+		}},
+	}
+	var out strings.Builder
+	if err := Write(&out, p); err != nil {
+		t.Fatal(err)
+	}
+	got := out.String()
+	if !strings.Contains(got, "10\n10\n20\n10\n") || strings.Contains(got, "10\n1\n20\n1\n") {
+		t.Fatalf("DXF should use presentation polylines:\n%s", got)
 	}
 }
 

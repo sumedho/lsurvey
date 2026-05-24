@@ -52,6 +52,9 @@ func Import(r io.Reader, p *project.Project) (int, error) {
 			for id, pt := range points {
 				p.Points[id] = pt
 			}
+			if len(points) > 0 {
+				p.MarkContoursStale("imported point geometry changed")
+			}
 			return count, nil
 		}
 		if err != nil {

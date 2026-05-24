@@ -145,7 +145,7 @@ func TestCloseCommand(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, want := range []string{"area=6.00", "misclose az=233°07′48.37″", "hd=5.00", "accuracy=1:2"} {
+	for _, want := range []string{"area=6.00", "misclose az=233°07′48.37″", "hd=5.00", "de=-4.00", "dn=-3.00", "accuracy=1:2"} {
 		if !strings.Contains(got.Message, want) {
 			t.Fatalf("message=%q missing %q", got.Message, want)
 		}
@@ -164,7 +164,7 @@ func TestCloseCommandPerfectClosure(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, want := range []string{"area=6.000", "hd=0.000", "accuracy=perfect"} {
+	for _, want := range []string{"area=6.000", "hd=0.000", "de=0.000", "dn=0.000", "accuracy=perfect"} {
 		if !strings.Contains(got.Message, want) {
 			t.Fatalf("message=%q missing %q", got.Message, want)
 		}
@@ -399,8 +399,8 @@ func TestResectCommandAllowsOmittedCode(t *testing.T) {
 func TestShiftCommand(t *testing.T) {
 	p := project.New("test")
 	z := 5.0
-	p.Points["1"] = geom.Point{ID: "1", Easting: 0, Northing: 0, Elevation: &z}
-	p.Points["2"] = geom.Point{ID: "2", Easting: 10, Northing: 10}
+	p.Points["1"] = geom.Point{ID: "1", Easting: 100, Northing: 200, Elevation: &z}
+	p.Points["2"] = geom.Point{ID: "2", Easting: 110, Northing: 210}
 	p.ContourSets["C1"] = project.ContourSet{
 		ID: "C1",
 		Polylines: []project.ContourPolyline{{
@@ -412,15 +412,15 @@ func TestShiftCommand(t *testing.T) {
 	mustExec(t, p, "shift 1 east=2 north=-3 elev=1.5")
 	close(t, p.Points["1"].Easting, 2)
 	close(t, p.Points["1"].Northing, -3)
-	close(t, *p.Points["1"].Elevation, 6.5)
+	close(t, *p.Points["1"].Elevation, 1.5)
 	close(t, p.Points["2"].Easting, 12)
 	close(t, p.Points["2"].Northing, 7)
 	if p.Points["2"].Elevation != nil {
 		t.Fatalf("2D point gained elevation: %+v", p.Points["2"])
 	}
-	close(t, p.ContourSets["C1"].Polylines[0].Vertices[0].Easting, 3)
-	close(t, p.ContourSets["C1"].Polylines[0].Vertices[0].Northing, -1)
-	close(t, p.ContourSets["C1"].Polylines[0].Elevation, 101.5)
+	close(t, p.ContourSets["C1"].Polylines[0].Vertices[0].Easting, -97)
+	close(t, p.ContourSets["C1"].Polylines[0].Vertices[0].Northing, -201)
+	close(t, p.ContourSets["C1"].Polylines[0].Elevation, 96.5)
 }
 
 func TestShiftCommandRejectsMissingAxes(t *testing.T) {
@@ -428,6 +428,25 @@ func TestShiftCommandRejectsMissingAxes(t *testing.T) {
 	mustExec(t, p, "pt add 1 0 0")
 	if _, err := Execute(p, "shift 1"); err == nil {
 		t.Fatal("expected shift usage error")
+	}
+}
+
+func TestShiftCommandLeavesOmittedCoordinateUnchangedAtBase(t *testing.T) {
+	p := project.New("test")
+	mustExec(t, p, "pt add 1 100 200")
+	mustExec(t, p, "pt add 2 110 210")
+	mustExec(t, p, "shift 1 east=50")
+	close(t, p.Points["1"].Easting, 50)
+	close(t, p.Points["1"].Northing, 200)
+	close(t, p.Points["2"].Easting, 60)
+	close(t, p.Points["2"].Northing, 210)
+}
+
+func TestShiftCommandRejectsElevationTargetForTwoDimensionalBase(t *testing.T) {
+	p := project.New("test")
+	mustExec(t, p, "pt add 1 100 200")
+	if _, err := Execute(p, "shift 1 elev=10"); err == nil {
+		t.Fatal("expected 2D base elevation shift error")
 	}
 }
 
@@ -470,6 +489,116 @@ func TestRotateCommandRejectsQuadrantBearing(t *testing.T) {
 	if _, err := Execute(p, "rotate 1 N 45.0000 E"); err == nil {
 		t.Fatal("expected rotate angle error")
 	}
+}
+
+func TestScaleApplyAndReversePreservesElevationAndContourMetadata(t *testing.T) {
+	p := project.New("test")
+	z := 7.0
+	maxEdge := 50.0
+	p.Points["A"] = geom.Point{ID: "A", Easting: 500000, Northing: 6500000, Elevation: &z}
+	p.Points["B"] = geom.Point{ID: "B", Easting: 500100, Northing: 6500200}
+	p.ContourSets["C1"] = project.ContourSet{
+		ID:               "C1",
+		Base:             5,
+		EffectiveMaxEdge: 50,
+		Generation:       &project.ContourGenerationSpec{Interval: 1, MaxEdge: &maxEdge},
+		Diagnostics: []project.ContourDiagnostic{{
+			Code: "long_edge", Message: "old", EdgeIDs: []string{"A", "B"}, Measured: 60, Limit: 50,
+		}},
+		Polylines: []project.ContourPolyline{{
+			Elevation: 6, Vertices: []project.ContourVertex{{Easting: 500100, Northing: 6500200}},
+		}},
+		RawPolylines: []project.ContourPolyline{{
+			Elevation: 6, Vertices: []project.ContourVertex{{Easting: 500100, Northing: 6500200}},
+		}},
+	}
+
+	result, err := Execute(p, "scale apply A csf=0.9996 system=MGA2020_ZONE50")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(result.Message, "applied scale") {
+		t.Fatalf("message=%q", result.Message)
+	}
+	if p.GridGround == nil || p.GridGround.Mode != "local_ground" || p.GridGround.GridSystem != "MGA2020_ZONE50" {
+		t.Fatalf("conversion=%+v", p.GridGround)
+	}
+	close(t, p.Points["A"].Easting, 500000)
+	close(t, p.Points["B"].Easting, 500000+100/0.9996)
+	close(t, p.Points["B"].Northing, 6500000+200/0.9996)
+	close(t, *p.Points["A"].Elevation, 7)
+	close(t, p.ContourSets["C1"].Base, 5)
+	close(t, p.ContourSets["C1"].EffectiveMaxEdge, 50/0.9996)
+	close(t, *p.ContourSets["C1"].Generation.MaxEdge, 50/0.9996)
+	close(t, p.ContourSets["C1"].Diagnostics[0].Measured, 60/0.9996)
+	if !strings.Contains(p.ContourSets["C1"].Diagnostics[0].Message, "60.024") {
+		t.Fatalf("diagnostic=%q", p.ContourSets["C1"].Diagnostics[0].Message)
+	}
+
+	mustExec(t, p, "pt add C 500050 6500050")
+	mustExec(t, p, "scale reverse")
+	if p.GridGround != nil {
+		t.Fatalf("conversion label should be removed after reverse: %+v", p.GridGround)
+	}
+	close(t, p.Points["B"].Easting, 500100)
+	close(t, p.Points["B"].Northing, 6500200)
+	close(t, p.Points["C"].Easting, 500000+(50*0.9996))
+	close(t, p.ContourSets["C1"].EffectiveMaxEdge, 50)
+	close(t, *p.ContourSets["C1"].Generation.MaxEdge, 50)
+}
+
+func TestScaleApplyValidation(t *testing.T) {
+	p := project.New("test")
+	mustExec(t, p, "pt add A 500000 6500000")
+	for _, command := range []string{
+		"scale apply A csf=0",
+		"scale apply A csf=NaN",
+		"scale reverse",
+	} {
+		if _, err := Execute(p, command); err == nil {
+			t.Fatalf("command %q should fail", command)
+		}
+	}
+	mustExec(t, p, "scale apply A csf=0.9996")
+	if p.GridGround.GridSystem != "" {
+		t.Fatalf("system=%q want empty", p.GridGround.GridSystem)
+	}
+	if _, err := Execute(p, "scale apply A csf=0.9996"); err == nil {
+		t.Fatal("second conversion to local ground should fail")
+	}
+}
+
+func TestShiftUpdatesActiveScaleAnchorBeforeReverse(t *testing.T) {
+	p := project.New("test")
+	mustExec(t, p, "pt add A 100 200")
+	mustExec(t, p, "pt add B 200 200")
+	mustExec(t, p, "scale apply A csf=0.5 system=GROUND")
+	mustExec(t, p, "shift A east=1000 north=2000")
+
+	close(t, p.GridGround.AnchorEasting, 1000)
+	close(t, p.GridGround.AnchorNorthing, 2000)
+	mustExec(t, p, "scale reverse")
+	close(t, p.Points["A"].Easting, 1000)
+	close(t, p.Points["A"].Northing, 2000)
+	close(t, p.Points["B"].Easting, 1100)
+	close(t, p.Points["B"].Northing, 2000)
+}
+
+func TestRotateUpdatesActiveScaleAnchorBeforeReverse(t *testing.T) {
+	p := project.New("test")
+	mustExec(t, p, "pt add O 0 0")
+	mustExec(t, p, "pt add A 100 0")
+	mustExec(t, p, "pt add B 200 0")
+	mustExec(t, p, "scale apply A csf=0.5 system=GROUND")
+	mustExec(t, p, "rotate O 90.0000")
+
+	close(t, p.GridGround.AnchorEasting, -100)
+	close(t, p.GridGround.AnchorNorthing, -200)
+	mustExec(t, p, "scale reverse")
+	close(t, p.Points["A"].Easting, -100)
+	close(t, p.Points["A"].Northing, -200)
+	close(t, p.Points["B"].Easting, -100)
+	close(t, p.Points["B"].Northing, -300)
 }
 
 func TestTransformFitCommandReportsSimilarityParametersWithoutMutation(t *testing.T) {
@@ -774,6 +903,107 @@ func TestContourGenDefaultsWholeNumberLevelsToIndex(t *testing.T) {
 	}
 	if !foundMajor || !foundMinor {
 		t.Fatalf("contours=%+v want level 1 major and level 1.5 minor", p.ContourSets["C1"].Polylines)
+	}
+}
+
+func TestContourBoundaryRegenerationAndStaleState(t *testing.T) {
+	p := project.New("test")
+	for _, command := range []string{
+		"pt add 1 0 0 0",
+		"pt add 2 10 0 10",
+		"pt add 3 0 10 0",
+		"pt add 4 10 10 10",
+		"pt add B1 0 2",
+		"pt add B2 10 2",
+		"pt add B3 10 8",
+		"pt add B4 0 8",
+		"line add E1 B1 B2 CLIP",
+		"line add E2 B2 B3 CLIP",
+		"line add E3 B3 B4 CLIP",
+		"line add E4 B4 B1 CLIP",
+	} {
+		mustExec(t, p, command)
+	}
+	mustExec(t, p, "contour gen C1 5 boundary=codes:CLIP")
+	set := p.ContourSets["C1"]
+	if set.Generation == nil || len(set.BoundaryLines) != 4 || set.Generation.BreaklineMode != "all" {
+		t.Fatalf("contour metadata=%+v", set)
+	}
+	if set.Stale {
+		t.Fatal("freshly generated contour is stale")
+	}
+	mustExec(t, p, "pt edit 2 elev=12")
+	if !p.ContourSets["C1"].Stale {
+		t.Fatal("terrain geometry edit should mark contour stale")
+	}
+	got, err := Execute(p, "contour info C1")
+	if err != nil || !strings.Contains(got.Message, "stale") || !strings.Contains(got.Message, "boundary_codes=CLIP") {
+		t.Fatalf("info=%q err=%v", got.Message, err)
+	}
+	mustExec(t, p, "contour regen C1")
+	if p.ContourSets["C1"].Stale {
+		t.Fatal("regeneration should clear stale state")
+	}
+}
+
+func TestLineTerrainRoleIsStoredAndDoesNotRequireReservedCode(t *testing.T) {
+	p := project.New("test")
+	mustExec(t, p, "pt add 1 0 0 0")
+	mustExec(t, p, "pt add 2 10 0 10")
+	mustExec(t, p, "line add R1 1 2 FEATURE terrain=ridge")
+	if got := p.Lines["R1"]; got.Code != "FEATURE" || got.TerrainRole != "ridge" {
+		t.Fatalf("line=%+v", got)
+	}
+	mustExec(t, p, "line edit R1 terrain=drain")
+	if p.Lines["R1"].TerrainRole != "drain" {
+		t.Fatalf("terrain role=%q", p.Lines["R1"].TerrainRole)
+	}
+	mustExec(t, p, "line edit R1 terrain=none")
+	if p.Lines["R1"].TerrainRole != "" {
+		t.Fatalf("terrain role=%q want empty", p.Lines["R1"].TerrainRole)
+	}
+}
+
+func TestContourQualityAndSmoothingOptionsAreStoredAndReported(t *testing.T) {
+	p := project.New("test")
+	mustExec(t, p, "pt add 1 0 0 0")
+	mustExec(t, p, "pt add 2 10 0 10")
+	mustExec(t, p, "pt add 3 0 10 10")
+	got, err := Execute(p, "contour gen C1 5 breaklines=none maxedge=2 smooth=1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	set := p.ContourSets["C1"]
+	if set.Generation == nil || set.Generation.MaxEdge == nil || *set.Generation.MaxEdge != 2 || set.Generation.Smooth != 1 {
+		t.Fatalf("generation=%+v", set.Generation)
+	}
+	if !strings.Contains(got.Message, "warnings") {
+		t.Fatalf("message=%q want warning summary", got.Message)
+	}
+	info, err := Execute(p, "contour info C1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{"smooth=1", "warnings=", "triangles=", "maxedge=2.000", "warning long_edge"} {
+		if !strings.Contains(info.Message, want) {
+			t.Fatalf("info=%q missing %q", info.Message, want)
+		}
+	}
+}
+
+func TestContourRejectsInvalidQualityAndSmoothingOptions(t *testing.T) {
+	p := project.New("test")
+	mustExec(t, p, "pt add 1 0 0 0")
+	mustExec(t, p, "pt add 2 10 0 10")
+	mustExec(t, p, "pt add 3 0 10 10")
+	for _, command := range []string{
+		"contour gen C1 5 maxedge=0",
+		"contour gen C1 5 smooth=4",
+		"contour gen C1 5 smooth=nope",
+	} {
+		if _, err := Execute(p, command); err == nil {
+			t.Fatalf("%q should fail", command)
+		}
 	}
 }
 

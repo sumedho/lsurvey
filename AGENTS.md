@@ -65,6 +65,15 @@ id,easting,northing,elevation,code,description
   horizontal.
 - `transform fit` takes alternating source/target point IDs, reports a
   non-mutating similarity fit, and uses only complete 3D pairs for `dz`.
+- `shift <base> east=<coordinate> north=<coordinate> elev=<coordinate>` translates
+  project geometry so the base reaches entered coordinates; omitted axes are
+  unchanged and elevation requires an elevated base.
+- `scale apply <base> csf=<factor> [system=<label>]` applies a reversible
+  anchored horizontal conversion and displays its active coordinate label.
+- `scale reverse` must use the persisted anchor and factor, then remove the
+  active scale label; horizontal contour distances scale and elevations do not.
+- While a scale is active, whole-project `shift` and `rotate` operations must
+  transform its persisted anchor so `scale reverse` remains consistent.
 - `map` should not conflict with `midpoint`; the map shortcut key is `F2`.
 
 ## Contour Rules
@@ -80,12 +89,26 @@ id,easting,northing,elevation,code,description
 - `breaklines=ids:L1,L2` must use only those stored lines.
 - Breakline endpoint points must have elevations.
 - Selected breaklines must not cross except at shared endpoints.
-- Editing points or lines does not auto-regenerate stored contours.
+- `boundary=codes:C1,C2` clips contours to one closed stored-line ring selected
+  by line codes; `exclude=codes:C3,C4` clips out closed rings.
+- Boundary and exclusion ring points may be 2D and are not implicit breaklines.
+- Lines may store terrain roles `standard`, `ridge`, or `drain`; these roles
+  currently share constrained-edge interpolation.
+- Editing relevant points or lines marks contour sets stale; `contour regen`
+  explicitly rebuilds from persisted generation settings.
+- Coincident elevated points with equal elevations are deduplicated with a
+  diagnostic; coincident points with conflicting elevations are rejected.
+- `maxedge=<distance>` sets the long-TIN-edge warning threshold; otherwise use
+  five times median nearest-point spacing. Diagnostics are persisted warnings.
+- `smooth=<0..3>` enables constraint-safe Chaikin smoothing; default is `0`.
+  Preserve raw contour polylines when smoothing is enabled and export the
+  smoothed `Polylines` representation to DXF.
 - DXF export must include stored contours as polylines on `CONTOURS` or
   `CONTOURS_INDEX`, using different ACI colors and visibly wider polyline
   width for index contours.
-- DXF export must add contour elevation text labels on `CONTOUR_LABELS` or
-  `CONTOUR_LABELS_INDEX` at the end of each contour line.
+- DXF export must add at most one readable contour elevation label per suitable
+  contour line on `CONTOUR_LABELS` or `CONTOUR_LABELS_INDEX`, suppressing short
+  or colliding labels.
 - Keep contour geometry tests in `internal/terrain`; keep command behavior tests
   in `internal/cogo`.
 
@@ -109,6 +132,8 @@ id,easting,northing,elevation,code,description
 - `F2` toggles the ASCII map.
 - Map view supports panning with arrows, zoom in/out, fit-to-points, and line
   overlay.
+- Map view supports an opt-in stored contour overlay, distinguishing minor and
+  index contours and reporting stale displayed contour sets.
 - Map rendering should skip off-screen points and clip lines to the viewport.
 - Opening or creating a project should reset map state.
 

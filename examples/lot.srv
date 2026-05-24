@@ -1,0 +1,309 @@
+{
+  "schema_version": 4,
+  "app_version": "dev",
+  "name": "untitled",
+  "display": {
+    "precision": 3
+  },
+  "units": {
+    "angle": "dd.mmss",
+    "distance": "m"
+  },
+  "points": {
+    "1": {
+      "id": "1",
+      "easting": 1000,
+      "northing": 5000,
+      "code": "rm"
+    },
+    "10": {
+      "id": "10",
+      "easting": 996.429153654885,
+      "northing": 4944.391398294968,
+      "code": "plan"
+    },
+    "11": {
+      "id": "11",
+      "easting": 1064.7835188400175,
+      "northing": 4940.004396455719,
+      "code": "rm"
+    },
+    "2": {
+      "id": "2",
+      "easting": 999.7197878232467,
+      "northing": 4995.633982806264,
+      "code": "plan"
+    },
+    "3": {
+      "id": "3",
+      "easting": 1019.9282102628252,
+      "northing": 4994.337000731006,
+      "code": "plan"
+    },
+    "4": {
+      "id": "4",
+      "easting": 1040.3761399313173,
+      "northing": 4993.024647016337,
+      "code": "plan"
+    },
+    "5": {
+      "id": "5",
+      "easting": 1060.6843570496098,
+      "northing": 4991.721260091325,
+      "code": "plan"
+    },
+    "6": {
+      "id": "6",
+      "easting": 1063.4843080989003,
+      "northing": 4988.537257245602,
+      "code": "plan"
+    },
+    "7": {
+      "id": "7",
+      "easting": 1060.387563242667,
+      "northing": 4940.286530087398,
+      "code": "plan"
+    },
+    "8": {
+      "id": "8",
+      "easting": 1037.0855057629556,
+      "northing": 4941.782062505042,
+      "code": "plan"
+    },
+    "9": {
+      "id": "9",
+      "easting": 1016.6375760944635,
+      "northing": 4943.09441621971,
+      "code": "plan"
+    }
+  },
+  "lines": {
+    "L1": {
+      "id": "L1",
+      "from": "2",
+      "to": "3",
+      "code": "plan"
+    },
+    "L10": {
+      "id": "L10",
+      "from": "4",
+      "to": "8",
+      "code": "plan"
+    },
+    "L11": {
+      "id": "L11",
+      "from": "3",
+      "to": "9",
+      "code": "plan"
+    },
+    "L2": {
+      "id": "L2",
+      "from": "3",
+      "to": "4",
+      "code": "plan"
+    },
+    "L3": {
+      "id": "L3",
+      "from": "4",
+      "to": "5",
+      "code": "plan"
+    },
+    "L4": {
+      "id": "L4",
+      "from": "5",
+      "to": "6",
+      "code": "plan"
+    },
+    "L5": {
+      "id": "L5",
+      "from": "6",
+      "to": "7",
+      "code": "plan"
+    },
+    "L6": {
+      "id": "L6",
+      "from": "7",
+      "to": "8",
+      "code": "plan"
+    },
+    "L7": {
+      "id": "L7",
+      "from": "8",
+      "to": "9",
+      "code": "plan"
+    },
+    "L8": {
+      "id": "L8",
+      "from": "9",
+      "to": "10",
+      "code": "plan"
+    },
+    "L9": {
+      "id": "L9",
+      "from": "10",
+      "to": "2",
+      "code": "plan"
+    }
+  },
+  "traverse": {
+    "start": "7",
+    "current": "11",
+    "leg_point_ids": [
+      "11"
+    ]
+  },
+  "history": [
+    {
+      "at": "2026-05-24T11:20:10.063007Z",
+      "command": "pt add 1 1000 5000 rm",
+      "result": "added point 1",
+      "created": [
+        "point:1"
+      ]
+    },
+    {
+      "at": "2026-05-24T11:20:17.12598Z",
+      "command": "trav start 1",
+      "result": "started traverse at 1"
+    },
+    {
+      "at": "2026-05-24T11:20:37.407602Z",
+      "command": "trav leg 183.4020 4.375",
+      "result": "created traverse point 2 current=2",
+      "created": [
+        "point:2"
+      ]
+    },
+    {
+      "at": "2026-05-24T11:21:01.692129Z",
+      "command": "trav leg 93.4020 20.25 plan",
+      "result": "created traverse point 3 current=3",
+      "created": [
+        "point:3"
+      ]
+    },
+    {
+      "at": "2026-05-24T11:21:07.780795Z",
+      "command": "trav leg 93.4020 20.49 plan",
+      "result": "created traverse point 4 current=4",
+      "created": [
+        "point:4"
+      ]
+    },
+    {
+      "at": "2026-05-24T11:21:11.981831Z",
+      "command": "trav leg 93.4020 20.35 plan",
+      "result": "created traverse point 5 current=5",
+      "created": [
+        "point:5"
+      ]
+    },
+    {
+      "at": "2026-05-24T11:21:57.927047Z",
+      "command": "trav leg 138.4020 4.24 plan",
+      "result": "created traverse point 6 current=6",
+      "created": [
+        "point:6"
+      ]
+    },
+    {
+      "at": "2026-05-24T11:22:15.537656Z",
+      "command": "trav leg 183.4020 48.35 plan",
+      "result": "created traverse point 7 current=7",
+      "created": [
+        "point:7"
+      ]
+    },
+    {
+      "at": "2026-05-24T11:22:34.31796Z",
+      "command": "trav leg 273.4020 23.35 plan",
+      "result": "created traverse point 8 current=8",
+      "created": [
+        "point:8"
+      ]
+    },
+    {
+      "at": "2026-05-24T11:22:44.019711Z",
+      "command": "trav leg 273.4020 20.49 plan",
+      "result": "created traverse point 9 current=9",
+      "created": [
+        "point:9"
+      ]
+    },
+    {
+      "at": "2026-05-24T11:22:49.660516Z",
+      "command": "trav leg 273.4020 20.25 plan",
+      "result": "created traverse point 10 current=10",
+      "created": [
+        "point:10"
+      ]
+    },
+    {
+      "at": "2026-05-24T11:23:02.964577Z",
+      "command": "pt edit 2 code=plan",
+      "result": "updated point 2"
+    },
+    {
+      "at": "2026-05-24T11:23:22.267866Z",
+      "command": "trav start 7",
+      "result": "started traverse at 7"
+    },
+    {
+      "at": "2026-05-24T11:23:53.409741Z",
+      "command": "bearing sub 273.4020 180",
+      "result": "bearing=93°40′20.00″"
+    },
+    {
+      "at": "2026-05-24T11:24:13.599819Z",
+      "command": "trav leg 93.4020 4.405 rm",
+      "result": "created traverse point 11 current=11",
+      "created": [
+        "point:11"
+      ]
+    },
+    {
+      "at": "2026-05-24T11:24:39.401124Z",
+      "command": "line gen plan",
+      "result": "generated 8 lines for code plan, skipped 0 duplicates",
+      "created": [
+        "line:L1",
+        "line:L2",
+        "line:L3",
+        "line:L4",
+        "line:L5",
+        "line:L6",
+        "line:L7",
+        "line:L8"
+      ]
+    },
+    {
+      "at": "2026-05-24T11:25:19.926041Z",
+      "command": "line add L9 10 2 plan",
+      "result": "added line L9",
+      "created": [
+        "line:L9"
+      ]
+    },
+    {
+      "at": "2026-05-24T11:25:52.460751Z",
+      "command": "line add L10 4 8 plan",
+      "result": "added line L10",
+      "created": [
+        "line:L10"
+      ]
+    },
+    {
+      "at": "2026-05-24T11:26:11.7216Z",
+      "command": "line add L10 3 9 plan",
+      "error": "line \"L10\" already exists"
+    },
+    {
+      "at": "2026-05-24T11:26:23.088659Z",
+      "command": "line add L11 3 9 plan",
+      "result": "added line L11",
+      "created": [
+        "line:L11"
+      ]
+    }
+  ]
+}

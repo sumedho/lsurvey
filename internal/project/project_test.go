@@ -13,13 +13,31 @@ func TestProjectJSONRoundTripPreservesPointCode(t *testing.T) {
 	p.AppVersion = "v1.2.3"
 	p.Description = "Boundary survey"
 	p.SetDisplayPrecision(4)
+	p.GridGround = &GridGroundConversion{
+		Mode:           "local_ground",
+		GridSystem:     "MGA2020_ZONE50",
+		AnchorPointID:  "1",
+		AnchorEasting:  200,
+		AnchorNorthing: 100,
+		CSF:            0.9996,
+	}
 	z := 42.5
 	p.Points["1"] = geom.Point{ID: "1", Northing: 100, Easting: 200, Elevation: &z, Code: "PEG"}
-	p.Lines["L1"] = Line{ID: "L1", From: "1", To: "1", Code: "BOUNDARY"}
+	p.Lines["L1"] = Line{ID: "L1", From: "1", To: "1", Code: "BOUNDARY", TerrainRole: "ridge"}
 	p.ContourSets["C1"] = ContourSet{
-		ID:       "C1",
-		Interval: 1,
-		Base:     0,
+		ID:               "C1",
+		Interval:         1,
+		Base:             0,
+		Generation:       &ContourGenerationSpec{Interval: 1, BreaklineMode: "none", BoundaryCodes: []string{"BOUNDARY"}, Smooth: 1},
+		Stale:            true,
+		TriangleCount:    4,
+		EffectiveMaxEdge: 12.5,
+		Diagnostics:      []ContourDiagnostic{{Code: "long_edge", Message: "long edge"}},
+		RawPolylines: []ContourPolyline{{
+			ID:        "C1-0001",
+			Elevation: 42,
+			Vertices:  []ContourVertex{{Northing: 100, Easting: 200}, {Northing: 105, Easting: 205}},
+		}},
 		Polylines: []ContourPolyline{{
 			ID:        "C1-0001",
 			Elevation: 42,
@@ -45,17 +63,29 @@ func TestProjectJSONRoundTripPreservesPointCode(t *testing.T) {
 	if got.AppVersion != "v1.2.3" {
 		t.Fatalf("app version=%q want v1.2.3", got.AppVersion)
 	}
+	if got.GridGround == nil || got.GridGround.Mode != "local_ground" || got.GridGround.GridSystem != "MGA2020_ZONE50" {
+		t.Fatalf("grid ground metadata=%+v", got.GridGround)
+	}
 	if got.DisplayPrecision() != 4 {
 		t.Fatalf("precision=%d want 4", got.DisplayPrecision())
 	}
 	if got.Lines["L1"].Code != "BOUNDARY" {
 		t.Fatalf("line code=%q want BOUNDARY", got.Lines["L1"].Code)
 	}
+	if got.Lines["L1"].TerrainRole != "ridge" {
+		t.Fatalf("line terrain role=%q want ridge", got.Lines["L1"].TerrainRole)
+	}
 	if len(got.History) != 1 {
 		t.Fatalf("history length=%d want 1", len(got.History))
 	}
 	if len(got.ContourSets["C1"].Polylines) != 1 {
 		t.Fatalf("contours=%+v", got.ContourSets)
+	}
+	if got.ContourSets["C1"].Generation == nil || !got.ContourSets["C1"].Stale {
+		t.Fatalf("contour generation metadata=%+v", got.ContourSets["C1"])
+	}
+	if got.ContourSets["C1"].TriangleCount != 4 || len(got.ContourSets["C1"].Diagnostics) != 1 || len(got.ContourSets["C1"].RawPolylines) != 1 {
+		t.Fatalf("contour quality metadata=%+v", got.ContourSets["C1"])
 	}
 }
 
@@ -86,6 +116,9 @@ func TestLoadMigratesSchemaOneProject(t *testing.T) {
 	if got.AppVersion != "" {
 		t.Fatalf("app version=%q want empty", got.AppVersion)
 	}
+	if got.GridGround != nil {
+		t.Fatalf("old project should have no conversion metadata: %+v", got.GridGround)
+	}
 }
 
 func TestNextPointIDUsesHighestNumericPointID(t *testing.T) {
@@ -99,6 +132,25 @@ func TestNextPointIDUsesHighestNumericPointID(t *testing.T) {
 	}
 }
 
+func TestSortedPointsOrdersNumericIDsNaturallyBeforeTextIDs(t *testing.T) {
+	p := New("test")
+	for _, id := range []string{"10", "A", "2", "1", "02"} {
+		p.Points[id] = geom.Point{ID: id}
+	}
+
+	points := p.SortedPoints()
+	got := make([]string, len(points))
+	for i, pt := range points {
+		got[i] = pt.ID
+	}
+	want := []string{"1", "02", "2", "10", "A"}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Fatalf("ids=%v want %v", got, want)
+		}
+	}
+}
+
 func TestNextLineIDUsesHighestNumericLineID(t *testing.T) {
 	p := New("test")
 	p.Lines["L1"] = Line{ID: "L1"}
@@ -107,5 +159,24 @@ func TestNextLineIDUsesHighestNumericLineID(t *testing.T) {
 
 	if got := p.NextLineID(); got != "L13" {
 		t.Fatalf("next line id=%q want L13", got)
+	}
+}
+
+func TestSortedLinesOrdersMatchingNumericSuffixesNaturally(t *testing.T) {
+	p := New("test")
+	for _, id := range []string{"L10", "L2", "L1", "BOUND"} {
+		p.Lines[id] = Line{ID: id}
+	}
+
+	lines := p.SortedLines()
+	got := make([]string, len(lines))
+	for i, line := range lines {
+		got[i] = line.ID
+	}
+	want := []string{"BOUND", "L1", "L2", "L10"}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Fatalf("ids=%v want %v", got, want)
+		}
 	}
 }

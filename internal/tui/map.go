@@ -13,13 +13,15 @@ const defaultMapZoom = 1.0
 const minMapZoom = 0.05
 const maxMapZoom = 100.0
 const mapPanFraction = 0.20
+const mapCellHeightRatio = 2.0
 
 type MapState struct {
-	ShowLines bool
-	Zoom      float64
-	CenterE   float64
-	CenterN   float64
-	Custom    bool
+	ShowLines    bool
+	ShowContours bool
+	Zoom         float64
+	CenterE      float64
+	CenterN      float64
+	Custom       bool
 }
 
 type mapBounds struct {
@@ -53,7 +55,7 @@ func (s *MapState) zoomBy(p *project.Project, factor float64) {
 	s.Zoom = clampFloat(s.Zoom*factor, minMapZoom, maxMapZoom)
 }
 
-func (s *MapState) panBy(p *project.Project, eastFraction, northFraction float64) {
+func (s *MapState) panBy(p *project.Project, width, height int, eastFraction, northFraction float64) {
 	points := p.SortedPoints()
 	bounds, ok := pointBounds(points)
 	if !ok {
@@ -64,7 +66,7 @@ func (s *MapState) panBy(p *project.Project, eastFraction, northFraction float64
 		s.CenterN = (bounds.MinN + bounds.MaxN) / 2
 		s.Custom = true
 	}
-	view := visibleBounds(bounds, *s)
+	view := visibleBounds(bounds, *s, width, height)
 	s.CenterE += (view.MaxE - view.MinE) * eastFraction
 	s.CenterN += (view.MaxN - view.MinN) * northFraction
 }
@@ -72,18 +74,20 @@ func (s *MapState) panBy(p *project.Project, eastFraction, northFraction float64
 func renderMap(p *project.Project, state MapState, width, height int, precision int) string {
 	width = max(20, width)
 	height = max(8, height)
-	bodyWidth := max(10, width-4)
-	bodyHeight := max(4, height-6)
+	bodyWidth, bodyHeight := mapGridSize(width, height)
 	points := p.SortedPoints()
 	bounds, ok := pointBounds(points)
 	if !ok {
-		return box("Map", "No points to map\n\nF2/Esc: return  +/-: zoom  f: fit  l: lines  F1: help", width, height)
+		return box("Map", "No points to map\n\nF2/Esc: return  +/-: zoom  f: fit  l: lines  c: contours  F1: help", width, height)
 	}
 
-	view := visibleBounds(bounds, state)
+	view := visibleBounds(bounds, state, bodyWidth, bodyHeight)
 	grid := newRuneGrid(bodyWidth, bodyHeight, ' ')
 	if state.ShowLines {
 		drawMapLines(grid, p, view)
+	}
+	if state.ShowContours {
+		drawMapContours(grid, p, view)
 	}
 	for _, pt := range points {
 		x, y, ok := mapCell(pt.Easting, pt.Northing, view, bodyWidth, bodyHeight)
@@ -103,7 +107,11 @@ func renderMap(p *project.Project, state MapState, width, height int, precision 
 		state.Zoom,
 		onOff(state.ShowLines),
 	)
-	body := status + "\n" + strings.Join(gridLines(grid), "\n") + "\n" + "F2/Esc: return  arrows: pan  +/-: zoom  f: fit  l: lines  F1: help"
+	if state.ShowContours {
+		polylines, stale := contourMapStats(p)
+		status += fmt.Sprintf("  contours=%d  stale=%d", polylines, stale)
+	}
+	body := status + "\n" + strings.Join(gridLines(grid), "\n") + "\n" + "F2/Esc: return  arrows: pan  +/-: zoom  f: fit  l: lines  c: contours  F1: help"
 	return box("Map", body, width, height)
 }
 
@@ -121,7 +129,7 @@ func pointBounds(points []geom.Point) (mapBounds, bool) {
 	return b, true
 }
 
-func visibleBounds(fit mapBounds, state MapState) mapBounds {
+func visibleBounds(fit mapBounds, state MapState, width, height int) mapBounds {
 	spanE := fit.MaxE - fit.MinE
 	spanN := fit.MaxN - fit.MinN
 	if spanE == 0 {
@@ -132,6 +140,12 @@ func visibleBounds(fit mapBounds, state MapState) mapBounds {
 	}
 	spanE *= 1.1
 	spanN *= 1.1
+	displayAspect := float64(max(1, width)) / (float64(max(1, height)) * mapCellHeightRatio)
+	if spanE/spanN < displayAspect {
+		spanE = spanN * displayAspect
+	} else {
+		spanN = spanE / displayAspect
+	}
 	if state.Zoom <= 0 {
 		state.Zoom = defaultMapZoom
 	}
@@ -149,6 +163,10 @@ func visibleBounds(fit mapBounds, state MapState) mapBounds {
 		MinN: centerN - spanN/2,
 		MaxN: centerN + spanN/2,
 	}
+}
+
+func mapGridSize(width, height int) (int, int) {
+	return max(10, width-4), max(4, height-6)
 }
 
 func mapCell(easting, northing float64, bounds mapBounds, width, height int) (int, int, bool) {
@@ -187,8 +205,47 @@ func drawMapLines(grid [][]rune, p *project.Project, bounds mapBounds) {
 		if !ok0 || !ok1 {
 			continue
 		}
-		drawLine(grid, x0, y0, x1, y1)
+		drawLineGlyph(grid, x0, y0, x1, y1, '.')
 	}
+}
+
+func drawMapContours(grid [][]rune, p *project.Project, bounds mapBounds) {
+	height := len(grid)
+	if height == 0 {
+		return
+	}
+	width := len(grid[0])
+	for _, set := range p.SortedContourSets() {
+		for _, contour := range set.Polylines {
+			glyph := '~'
+			if contour.Index {
+				glyph = '='
+			}
+			for i := 1; i < len(contour.Vertices); i++ {
+				from, to := contour.Vertices[i-1], contour.Vertices[i]
+				fromClipped, toClipped, ok := clipLineToBounds(from.Easting, from.Northing, to.Easting, to.Northing, bounds)
+				if !ok {
+					continue
+				}
+				x0, y0, ok0 := mapCell(fromClipped.Easting, fromClipped.Northing, bounds, width, height)
+				x1, y1, ok1 := mapCell(toClipped.Easting, toClipped.Northing, bounds, width, height)
+				if ok0 && ok1 {
+					drawLineGlyph(grid, x0, y0, x1, y1, glyph)
+				}
+			}
+		}
+	}
+}
+
+func contourMapStats(p *project.Project) (int, int) {
+	var polylines, stale int
+	for _, set := range p.SortedContourSets() {
+		polylines += len(set.Polylines)
+		if set.Stale {
+			stale++
+		}
+	}
+	return polylines, stale
 }
 
 func clipLineToBounds(e0, n0, e1, n1 float64, bounds mapBounds) (geom.Point, geom.Point, bool) {
@@ -232,6 +289,10 @@ func clipLineToBounds(e0, n0, e1, n1 float64, bounds mapBounds) (geom.Point, geo
 }
 
 func drawLine(grid [][]rune, x0, y0, x1, y1 int) {
+	drawLineGlyph(grid, x0, y0, x1, y1, '.')
+}
+
+func drawLineGlyph(grid [][]rune, x0, y0, x1, y1 int, glyph rune) {
 	dx := absInt(x1 - x0)
 	sx := -1
 	if x0 < x1 {
@@ -244,8 +305,8 @@ func drawLine(grid [][]rune, x0, y0, x1, y1 int) {
 	}
 	err := dx + dy
 	for {
-		if grid[y0][x0] == ' ' {
-			grid[y0][x0] = '.'
+		if grid[y0][x0] == ' ' || grid[y0][x0] == '.' || glyph == '=' && grid[y0][x0] == '~' {
+			grid[y0][x0] = glyph
 		}
 		if x0 == x1 && y0 == y1 {
 			return
@@ -270,11 +331,15 @@ func drawLabel(grid [][]rune, x, y int, label string) {
 		if x < 0 || x >= len(grid[y]) {
 			return
 		}
-		if grid[y][x] == ' ' {
+		if grid[y][x] == ' ' || isMapOverlayGlyph(grid[y][x]) {
 			grid[y][x] = r
 		}
 		x++
 	}
+}
+
+func isMapOverlayGlyph(r rune) bool {
+	return r == '.' || r == '~' || r == '='
 }
 
 func newRuneGrid(width, height int, fill rune) [][]rune {

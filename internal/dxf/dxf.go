@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"io"
 	"math"
+	"sort"
 	"strconv"
 	"strings"
 
@@ -91,8 +92,16 @@ func Write(w io.Writer, p *project.Project) error {
 		}
 	}
 
+	var acceptedLabels []contourLabelPlacement
 	for _, set := range p.SortedContourSets() {
-		for _, contour := range set.Polylines {
+		polylines := append([]project.ContourPolyline(nil), set.Polylines...)
+		sort.SliceStable(polylines, func(i, j int) bool {
+			if polylines[i].ID != polylines[j].ID {
+				return polylines[i].ID < polylines[j].ID
+			}
+			return polylines[i].Elevation < polylines[j].Elevation
+		})
+		for _, contour := range polylines {
 			layerName := "CONTOURS"
 			labelLayer := "CONTOUR_LABELS"
 			color := minorContourColor
@@ -118,13 +127,9 @@ func Write(w io.Writer, p *project.Project) error {
 				bw.pair(10, v.Easting)
 				bw.pair(20, v.Northing)
 			}
-			if label, ok := contourLabelPoint(contour.Vertices); ok {
-				bw.entityColor("TEXT", labelLayer, color)
-				bw.pair(10, label.Easting)
-				bw.pair(20, label.Northing)
-				bw.pair(30, contour.Elevation)
-				bw.pair(40, contourLabelHeight)
-				bw.pair(1, contourElevationLabel(contour.Elevation))
+			if label, required, ok := contourTextLabel(contour); ok && acceptContourLabel(label, required, acceptedLabels) {
+				bw.centeredText(labelLayer, color, label)
+				acceptedLabels = append(acceptedLabels, contourLabelPlacement{Label: label, RequiredLength: required})
 			}
 		}
 	}
@@ -243,11 +248,68 @@ func contourElevationLabel(elevation float64) string {
 	return strconv.FormatFloat(elevation, 'f', -1, 64)
 }
 
-func contourLabelPoint(vertices []project.ContourVertex) (project.ContourVertex, bool) {
-	if len(vertices) < 2 {
-		return project.ContourVertex{}, false
+type contourLabelPlacement struct {
+	Label          textLabel
+	RequiredLength float64
+}
+
+func contourTextLabel(contour project.ContourPolyline) (textLabel, float64, bool) {
+	value := contourElevationLabel(contour.Elevation)
+	required := contourLabelHeight * float64(len([]rune(value))+2) * 0.7
+	if len(contour.Vertices) < 2 {
+		return textLabel{}, required, false
 	}
-	return vertices[len(vertices)-1], true
+	total := 0.0
+	for i := 1; i < len(contour.Vertices); i++ {
+		total += contourVertexDistance(contour.Vertices[i-1], contour.Vertices[i])
+	}
+	if total < required {
+		return textLabel{}, required, false
+	}
+	target := total / 2
+	traversed := 0.0
+	for i := 1; i < len(contour.Vertices); i++ {
+		a, b := contour.Vertices[i-1], contour.Vertices[i]
+		length := contourVertexDistance(a, b)
+		if length == 0 {
+			continue
+		}
+		if traversed+length+1e-9 < target {
+			traversed += length
+			continue
+		}
+		t := (target - traversed) / length
+		rotation := math.Atan2(b.Northing-a.Northing, b.Easting-a.Easting) * 180 / math.Pi
+		for rotation > 90 {
+			rotation -= 180
+		}
+		for rotation < -90 {
+			rotation += 180
+		}
+		return textLabel{
+			Easting:   a.Easting + t*(b.Easting-a.Easting),
+			Northing:  a.Northing + t*(b.Northing-a.Northing),
+			Elevation: contour.Elevation,
+			Height:    contourLabelHeight,
+			Rotation:  rotation,
+			Value:     value,
+		}, required, true
+	}
+	return textLabel{}, required, false
+}
+
+func acceptContourLabel(candidate textLabel, required float64, accepted []contourLabelPlacement) bool {
+	for _, prior := range accepted {
+		distance := math.Hypot(candidate.Easting-prior.Label.Easting, candidate.Northing-prior.Label.Northing)
+		if distance < (required+prior.RequiredLength)/2 {
+			return false
+		}
+	}
+	return true
+}
+
+func contourVertexDistance(a, b project.ContourVertex) float64 {
+	return math.Hypot(a.Easting-b.Easting, a.Northing-b.Northing)
 }
 
 func encodeDXFText(value string) string {

@@ -23,6 +23,31 @@ func TestFilterAndSortPoints(t *testing.T) {
 	}
 }
 
+func TestSortPointsByIDUsesNaturalNumericOrder(t *testing.T) {
+	p := project.New("test")
+	for _, id := range []string{"1", "10", "2", "A"} {
+		p.Points[id] = geom.Point{ID: id}
+	}
+	got := FilterAndSortPoints(p, "", SortID, true)
+	want := []string{"1", "2", "10", "A"}
+	for i, id := range want {
+		if got[i].ID != id {
+			t.Fatalf("order=%v want %v", []string{got[0].ID, got[1].ID, got[2].ID, got[3].ID}, want)
+		}
+	}
+}
+
+func TestSecondaryIDSortUsesNaturalNumericOrder(t *testing.T) {
+	p := project.New("test")
+	for _, id := range []string{"10", "2", "1"} {
+		p.Points[id] = geom.Point{ID: id, Code: "PEG"}
+	}
+	got := FilterAndSortPoints(p, "", SortCode, true)
+	if got[0].ID != "1" || got[1].ID != "2" || got[2].ID != "10" {
+		t.Fatalf("order=%s,%s,%s want 1,2,10", got[0].ID, got[1].ID, got[2].ID)
+	}
+}
+
 func TestParseSortField(t *testing.T) {
 	if got, ok := ParseSortField("code"); !ok || got != SortCode {
 		t.Fatalf("got %q %v", got, ok)
@@ -71,5 +96,17 @@ func TestFormatLineRowsIncludesContoursWithoutHeightClipping(t *testing.T) {
 		if !strings.Contains(got, want) {
 			t.Fatalf("line rows missing %q:\n%s", want, got)
 		}
+	}
+}
+
+func TestFormatLineRowsUsesNaturallySortedProjectLines(t *testing.T) {
+	p := project.New("test")
+	for _, id := range []string{"L10", "L2", "L1"} {
+		p.Lines[id] = project.Line{ID: id}
+	}
+	got := FormatLineRows(p.SortedLines(), nil, 2)
+	l1, l2, l10 := strings.Index(got, "L1        "), strings.Index(got, "L2        "), strings.Index(got, "L10       ")
+	if l1 < 0 || l2 < 0 || l10 < 0 || !(l1 < l2 && l2 < l10) {
+		t.Fatalf("line rows not naturally sorted:\n%s", got)
 	}
 }

@@ -41,8 +41,9 @@ func commandSuggestions(p *project.Project) []string {
 		add("rad3d " + pt.ID + " <azimuth|bearing> <slope_distance> <zenith> as " + nextPointID + " [code]")
 		add("midpoint " + pt.ID + " <p2> as " + nextPointID + " [code]")
 		add("offset " + pt.ID + " <p2> <offset> <chainage> as " + nextPointID + " [code]")
-		add("shift " + pt.ID + " east=<delta> [north=<delta>] [elev=<delta>]")
+		add("shift " + pt.ID + " east=<coordinate> [north=<coordinate>] [elev=<coordinate>]")
 		add("rotate " + pt.ID + " <bearing>")
+		add("scale apply " + pt.ID + " csf=<factor> [system=<label>]")
 		add("transform fit " + pt.ID + " <dst1> <src2> <dst2> [<srcN> <dstN> ...]")
 		add("line intersect " + pt.ID + " <a2> <b1> <b2> as " + nextPointID + " [code]")
 		add("intersect bearing-bearing " + pt.ID + " <brg1> <p2> <brg2> as " + nextPointID + " [code]")
@@ -55,14 +56,22 @@ func commandSuggestions(p *project.Project) []string {
 	}
 
 	lines := p.SortedLines()
+	lineCodes := map[string]bool{}
 	for _, line := range lines {
 		add("line del " + line.ID)
 		add("offset " + line.ID + " <offset> <chainage> as " + nextPointID + " [code]")
 		add("contour gen C1 1 breaklines=ids:" + line.ID)
+		if line.Code != "" && !lineCodes[line.Code] {
+			add("contour gen C1 1 boundary=codes:" + line.Code)
+			add("contour gen C1 1 exclude=codes:" + line.Code)
+			add("contour gen C1 1 boundary=codes:" + line.Code + " maxedge=<distance> smooth=1")
+			lineCodes[line.Code] = true
+		}
 	}
 
 	for _, set := range p.SortedContourSets() {
 		add("contour info " + set.ID)
+		add("contour regen " + set.ID)
 		add("contour del " + set.ID)
 	}
 
