@@ -63,6 +63,7 @@ type TraverseState struct {
 
 type Project struct {
 	SchemaVersion int                   `json:"schema_version"`
+	AppVersion    string                `json:"app_version,omitempty"`
 	Name          string                `json:"name"`
 	Description   string                `json:"description,omitempty"`
 	Display       DisplaySettings       `json:"display"`

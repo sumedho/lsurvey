@@ -416,6 +416,7 @@ func (m *Model) ExecuteCommand(command string) tea.Cmd {
 			return nil
 		}
 		m.path = paths.Project(m.path)
+		m.project.AppVersion = m.version
 		if err := project.Save(m.path, m.project); err != nil {
 			m.setError(err.Error())
 			return nil
@@ -428,6 +429,7 @@ func (m *Model) ExecuteCommand(command string) tea.Cmd {
 			return nil
 		}
 		m.path = paths.Project(fields[1])
+		m.project.AppVersion = m.version
 		if err := project.Save(m.path, m.project); err != nil {
 			m.setError(err.Error())
 			return nil

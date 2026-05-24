@@ -59,6 +59,12 @@ Build a local binary:
 go build -o lsurvey ./cmd/lsurvey
 ```
 
+Build a local binary with an explicit application version:
+
+```sh
+go build -ldflags "-X main.version=v1.2.3" -o lsurvey ./cmd/lsurvey
+```
+
 Then run:
 
 ```sh
@@ -464,6 +470,8 @@ export csv lot42_points
 
 Project files are JSON documents with a `.srv` extension. They store:
 
+- File format `schema_version` for compatibility.
+- Optional `app_version` for the `lsurvey` build that last saved the file.
 - Project name and description.
 - Unit labels.
 - Display precision.
@@ -475,6 +483,31 @@ Project files are JSON documents with a `.srv` extension. They store:
 
 The file format is intended to remain readable and versioned, but users should
 edit projects through `lsurvey` unless they understand the schema.
+
+`schema_version` controls compatibility. It is separate from the application
+release version, so routine app releases do not require a project file version
+bump unless the persisted schema changes.
+
+## Releases
+
+Official builds are created only from published GitHub Releases.
+
+Release process:
+
+1. Run local verification:
+
+   ```sh
+   gofmt -w <changed-go-files>
+   go test ./...
+   go vet ./...
+   ```
+
+2. Push the release commit.
+3. Create and publish a GitHub Release with a SemVer tag such as `v1.2.3`.
+4. GitHub Actions builds release archives for macOS, Linux, and Windows and
+   attaches them to that release.
+
+Release binaries use the GitHub Release tag as the application version.
 
 ## Development
 

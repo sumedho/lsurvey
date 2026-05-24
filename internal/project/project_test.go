@@ -10,6 +10,7 @@ import (
 
 func TestProjectJSONRoundTripPreservesPointCode(t *testing.T) {
 	p := New("test")
+	p.AppVersion = "v1.2.3"
 	p.Description = "Boundary survey"
 	p.SetDisplayPrecision(4)
 	z := 42.5
@@ -40,6 +41,9 @@ func TestProjectJSONRoundTripPreservesPointCode(t *testing.T) {
 	}
 	if got.Description != "Boundary survey" {
 		t.Fatalf("description=%q want Boundary survey", got.Description)
+	}
+	if got.AppVersion != "v1.2.3" {
+		t.Fatalf("app version=%q want v1.2.3", got.AppVersion)
 	}
 	if got.DisplayPrecision() != 4 {
 		t.Fatalf("precision=%d want 4", got.DisplayPrecision())
@@ -78,6 +82,9 @@ func TestLoadMigratesSchemaOneProject(t *testing.T) {
 	}
 	if got.ContourSets == nil {
 		t.Fatal("contour sets should be initialized")
+	}
+	if got.AppVersion != "" {
+		t.Fatalf("app version=%q want empty", got.AppVersion)
 	}
 }
 
