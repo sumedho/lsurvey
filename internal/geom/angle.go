@@ -157,6 +157,21 @@ func (a Angle) FormatDMS(precision int) string {
 	return fmt.Sprintf("%d°%02d′%02d.%0*d″", d, m, s, precision, frac)
 }
 
+func FormatSignedDMS(degrees float64, precision int) string {
+	if precision < 0 {
+		precision = 0
+	}
+	if math.Abs(degrees) < 0.5/(3600*math.Pow10(precision)) {
+		degrees = 0
+	}
+	sign := "+"
+	if degrees < 0 {
+		sign = "-"
+		degrees = -degrees
+	}
+	return sign + AngleFromDegrees(degrees).FormatDMS(precision)
+}
+
 func (a Angle) FormatQuadrant(precision int) string {
 	deg := normalizeDegrees(a.degrees)
 	switch {

@@ -35,17 +35,28 @@ const splashDuration = 1500 * time.Millisecond
 
 type splashDoneMsg struct{}
 
+type mainFocus int
+
+const (
+	focusCommand mainFocus = iota
+	focusPoints
+	focusLines
+)
+
 type Model struct {
 	project *project.Project
 	path    string
 	version string
 	dirty   bool
 
-	input    textinput.Model
-	help     viewport.Model
-	mode     Mode
-	prior    Mode
-	mapState MapState
+	input      textinput.Model
+	help       viewport.Model
+	pointsView viewport.Model
+	linesView  viewport.Model
+	mode       Mode
+	prior      Mode
+	mapState   MapState
+	focus      mainFocus
 
 	width  int
 	height int
@@ -85,23 +96,29 @@ func newModel(p *project.Project, path, version string, showSplash bool) Model {
 
 	helpView := viewport.New(80, 20)
 	helpView.SetContent(help.Render(""))
+	pointsView := viewport.New(80, 10)
+	linesView := viewport.New(80, 6)
 
 	m := Model{
-		project:  p,
-		path:     path,
-		version:  version,
-		input:    input,
-		help:     helpView,
-		mode:     ModeMain,
-		sort:     SortID,
-		sortAsc:  true,
-		histIdx:  -1,
-		mapState: newMapState(),
-		message:  "F1 opens help. Tab accepts completions. Use / to filter, alt+s/alt+d to sort.",
+		project:    p,
+		path:       path,
+		version:    version,
+		input:      input,
+		help:       helpView,
+		pointsView: pointsView,
+		linesView:  linesView,
+		mode:       ModeMain,
+		focus:      focusCommand,
+		sort:       SortID,
+		sortAsc:    true,
+		histIdx:    -1,
+		mapState:   newMapState(),
+		message:    "F1 opens help. Tab accepts completions or switches panes when input is blank. Use / to filter, alt+s/alt+d to sort.",
 	}
 	if showSplash {
 		m.mode = ModeSplash
 	}
+	m.syncMainViewports()
 	m.refreshCompletions()
 	return m
 }
@@ -111,7 +128,11 @@ func Run(p *project.Project, path string) error {
 }
 
 func RunWithVersion(p *project.Project, path, version string) error {
-	_, err := tea.NewProgram(NewStartupModelWithVersion(p, path, version), tea.WithAltScreen()).Run()
+	_, err := tea.NewProgram(
+		NewStartupModelWithVersion(p, path, version),
+		tea.WithAltScreen(),
+		tea.WithMouseCellMotion(),
+	).Run()
 	return err
 }
 
@@ -130,12 +151,19 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.input.Width = max(20, msg.Width-6)
 		m.help.Width = max(20, msg.Width-8)
 		m.help.Height = max(5, msg.Height-5)
+		m.syncMainViewports()
 		return m, nil
 	case splashDoneMsg:
 		if m.mode == ModeSplash {
 			m.mode = ModeMain
 		}
 		return m, nil
+	case tea.MouseMsg:
+		if m.mode == ModeMain {
+			if handled, cmd := m.handleMainMouse(msg); handled {
+				return m, cmd
+			}
+		}
 	case tea.KeyMsg:
 		if m.mode == ModeSplash {
 			if msg.String() == "ctrl+c" {
@@ -204,14 +232,31 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "enter":
 			return m.executeInput()
 		case "tab":
+			if m.shouldCycleFocusOnTab() {
+				m.cycleMainFocus(1)
+				return m, nil
+			}
 			m.completeNextInput()
 			return m, nil
+		case "shift+tab":
+			m.cycleMainFocus(-1)
+			return m, nil
 		case "up":
+			if m.focus != focusCommand {
+				return m.updateFocusedViewport(msg)
+			}
 			m.previousHistory()
 			return m, nil
 		case "down":
+			if m.focus != focusCommand {
+				return m.updateFocusedViewport(msg)
+			}
 			m.nextHistory()
 			return m, nil
+		case "pgup", "pgdown":
+			if m.focus != focusCommand {
+				return m.updateFocusedViewport(msg)
+			}
 		case "f1":
 			m.openHelp("")
 			return m, nil
@@ -264,6 +309,8 @@ func (m Model) View() string {
 		return renderMap(m.project, m.mapState, max(60, m.width), max(18, m.height), m.project.DisplayPrecision())
 	}
 
+	m.syncMainViewports()
+
 	width := max(60, m.width)
 	height := max(18, m.height)
 	infoHeight := 4
@@ -272,10 +319,7 @@ func (m Model) View() string {
 	pointHeight := max(6, height-infoHeight-commandHeight-lineHeight)
 
 	points := FilterAndSortPoints(m.project, m.filter, m.sort, m.sortAsc)
-	lines := m.project.SortedLines()
 	info := m.infoText(len(points))
-	pointTable := FormatPointRows(points, pointHeight-2, m.project.DisplayPrecision())
-	lineTable := FormatLineRows(lines, m.project.SortedContourSets(), lineHeight-2, m.project.DisplayPrecision())
 	message := m.message
 	if m.lastErr != "" {
 		message = errorStyle.Render(m.lastErr)
@@ -288,9 +332,9 @@ func (m Model) View() string {
 	return lipgloss.JoinVertical(
 		lipgloss.Left,
 		box("Info", info, width, infoHeight),
-		box("Points", pointTable, width, pointHeight),
-		box("Lines", lineTable, width, lineHeight),
-		box("Command", command, width, commandHeight),
+		box(m.viewportPaneTitle("Points", focusPoints, m.pointsView), m.pointsView.View(), width, pointHeight),
+		box(m.viewportPaneTitle("Lines", focusLines, m.linesView), m.linesView.View(), width, lineHeight),
+		box(m.mainPaneTitle("Command", focusCommand), command, width, commandHeight),
 	)
 }
 
@@ -332,6 +376,7 @@ func (m *Model) ExecuteCommand(command string) tea.Cmd {
 	}
 	m.lastErr = ""
 	defer m.refreshCompletions()
+	defer m.syncMainViewports()
 	switch fields[0] {
 	case "quit", "exit":
 		m.quitting = true
@@ -590,6 +635,160 @@ func (m *Model) handleSort(fields []string) {
 		}
 	}
 	m.message = "sort " + string(m.sort) + " " + m.sortDirection()
+}
+
+func (m *Model) syncMainViewports() {
+	width := max(60, m.width)
+	height := max(18, m.height)
+	infoHeight := 4
+	commandHeight := 6
+	lineHeight := max(5, height/4)
+	pointHeight := max(6, height-infoHeight-commandHeight-lineHeight)
+	contentWidth := max(1, width-4)
+	pointContentHeight := max(1, pointHeight-3)
+	lineContentHeight := max(1, lineHeight-3)
+
+	m.pointsView.Width = contentWidth
+	m.pointsView.Height = pointContentHeight
+	m.linesView.Width = contentWidth
+	m.linesView.Height = lineContentHeight
+	m.pointsView.SetContent(FormatPointRows(FilterAndSortPoints(m.project, m.filter, m.sort, m.sortAsc), m.project.DisplayPrecision()))
+	m.linesView.SetContent(FormatLineRows(m.project.SortedLines(), m.project.SortedContourSets(), m.project.DisplayPrecision()))
+}
+
+func (m *Model) shouldCycleFocusOnTab() bool {
+	return m.focus != focusCommand || strings.TrimSpace(m.input.Value()) == ""
+}
+
+func (m *Model) cycleMainFocus(step int) {
+	order := []mainFocus{focusCommand, focusPoints, focusLines}
+	index := 0
+	for i, focus := range order {
+		if focus == m.focus {
+			index = i
+			break
+		}
+	}
+	index = (index + step + len(order)) % len(order)
+	m.focus = order[index]
+	m.syncInputFocus()
+}
+
+func (m *Model) syncInputFocus() {
+	if m.focus == focusCommand {
+		m.input.Focus()
+		return
+	}
+	m.input.Blur()
+}
+
+func (m Model) updateFocusedViewport(msg tea.Msg) (tea.Model, tea.Cmd) {
+	m.syncMainViewports()
+	var cmd tea.Cmd
+	switch m.focus {
+	case focusPoints:
+		m.pointsView, cmd = m.pointsView.Update(msg)
+	case focusLines:
+		m.linesView, cmd = m.linesView.Update(msg)
+	}
+	return m, cmd
+}
+
+func (m *Model) handleMainMouse(msg tea.MouseMsg) (bool, tea.Cmd) {
+	if !isWheelMouse(msg) && !(msg.Button == tea.MouseButtonLeft && msg.Action == tea.MouseActionPress) {
+		return false, nil
+	}
+	m.syncMainViewports()
+	pane, ok := m.mainPaneAt(msg.X, msg.Y)
+	if ok {
+		m.focus = pane
+		m.syncInputFocus()
+
+		if pane == focusCommand || !isWheelMouse(msg) {
+			return true, nil
+		}
+		var cmd tea.Cmd
+		switch pane {
+		case focusPoints:
+			m.pointsView, cmd = m.pointsView.Update(msg)
+		case focusLines:
+			m.linesView, cmd = m.linesView.Update(msg)
+		}
+		return true, cmd
+	}
+	if isWheelMouse(msg) {
+		target := m.scrollTargetFocus()
+		if target != focusCommand {
+			m.focus = target
+			m.syncInputFocus()
+			updated, cmd := m.updateFocusedViewport(msg)
+			*m = updated.(Model)
+			return true, cmd
+		}
+	}
+	return false, nil
+}
+
+func (m Model) mainPaneAt(x, y int) (mainFocus, bool) {
+	width := max(60, m.width)
+	height := max(18, m.height)
+	infoHeight := 4
+	commandHeight := 6
+	lineHeight := max(5, height/4)
+	pointHeight := max(6, height-infoHeight-commandHeight-lineHeight)
+
+	if x < 0 || x >= width {
+		return focusCommand, false
+	}
+	pointTop := infoHeight
+	pointBottom := pointTop + pointHeight
+	lineTop := pointBottom
+	lineBottom := lineTop + lineHeight
+	commandTop := lineBottom
+	commandBottom := commandTop + commandHeight
+
+	switch {
+	case y >= pointTop && y < pointBottom:
+		return focusPoints, true
+	case y >= lineTop && y < lineBottom:
+		return focusLines, true
+	case y >= commandTop && y < commandBottom:
+		return focusCommand, true
+	default:
+		return focusCommand, false
+	}
+}
+
+func (m Model) mainPaneTitle(title string, focus mainFocus) string {
+	if m.focus == focus {
+		return title + " [active]"
+	}
+	return title
+}
+
+func (m Model) viewportPaneTitle(title string, focus mainFocus, view viewport.Model) string {
+	title = m.mainPaneTitle(title, focus)
+	if view.TotalLineCount() <= view.VisibleLineCount() {
+		return title
+	}
+	percent := int(view.ScrollPercent()*100 + 0.5)
+	return fmt.Sprintf("%s %d%%", title, percent)
+}
+
+func isWheelMouse(msg tea.MouseMsg) bool {
+	switch msg.Button {
+	case tea.MouseButtonWheelUp, tea.MouseButtonWheelDown, tea.MouseButtonWheelLeft, tea.MouseButtonWheelRight:
+		return true
+	default:
+		return false
+	}
+}
+
+func (m Model) scrollTargetFocus() mainFocus {
+	if m.focus == focusLines {
+		return focusLines
+	}
+	return focusPoints
 }
 
 func (m *Model) cycleSort() {

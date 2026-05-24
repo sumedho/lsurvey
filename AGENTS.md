@@ -63,6 +63,8 @@ id,easting,northing,elevation,code,description
   to those points, then stores the best-fit point from the reverse bearing lines.
 - `rad3d` must use slope distance and zenith angle, with zenith 90° treated as
   horizontal.
+- `transform fit` takes alternating source/target point IDs, reports a
+  non-mutating similarity fit, and uses only complete 3D pairs for `dz`.
 - `map` should not conflict with `midpoint`; the map shortcut key is `F2`.
 
 ## Contour Rules

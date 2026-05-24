@@ -472,6 +472,66 @@ func TestRotateCommandRejectsQuadrantBearing(t *testing.T) {
 	}
 }
 
+func TestTransformFitCommandReportsSimilarityParametersWithoutMutation(t *testing.T) {
+	p := project.New("test")
+	mustExec(t, p, "pt add S1 0 0 1")
+	mustExec(t, p, "pt add T1 100 200 4")
+	mustExec(t, p, "pt add S2 10 0 2")
+	mustExec(t, p, "pt add T2 100 180 5")
+	mustExec(t, p, "pt add S3 0 10")
+	mustExec(t, p, "pt add T3 120 200")
+
+	got, err := Execute(p, "transform fit S1 T1 S2 T2 S3 T3")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{
+		"dx=100.000", "dy=200.000", "dz=3.000",
+		"angle=+90°00′00.00″", "scale=2.00000000",
+		"hrms=0.000", "zrms=0.000", "pairs=3", "zpairs=2",
+	} {
+		if !strings.Contains(got.Message, want) {
+			t.Fatalf("message=%q missing %q", got.Message, want)
+		}
+	}
+	close(t, p.Points["S2"].Easting, 10)
+	close(t, p.Points["S2"].Northing, 0)
+}
+
+func TestTransformFitCommandReportsUnavailableVerticalFit(t *testing.T) {
+	p := project.New("test")
+	mustExec(t, p, "pt add S1 0 0")
+	mustExec(t, p, "pt add T1 10 20")
+	mustExec(t, p, "pt add S2 10 0")
+	mustExec(t, p, "pt add T2 20 20")
+
+	got, err := Execute(p, "transform fit S1 T1 S2 T2")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(got.Message, "dz=n/a") || !strings.Contains(got.Message, "zrms=n/a") || !strings.Contains(got.Message, "zpairs=0") {
+		t.Fatalf("message=%q", got.Message)
+	}
+}
+
+func TestTransformFitCommandRejectsInvalidPairs(t *testing.T) {
+	p := project.New("test")
+	mustExec(t, p, "pt add S1 0 0")
+	mustExec(t, p, "pt add T1 10 20")
+	mustExec(t, p, "pt add S2 0 0")
+	mustExec(t, p, "pt add T2 20 20")
+	for _, command := range []string{
+		"transform fit S1 T1",
+		"transform fit S1 T1 S2",
+		"transform fit S1 T1 MISSING T2",
+		"transform fit S1 T1 S2 T2",
+	} {
+		if _, err := Execute(p, command); err == nil {
+			t.Fatalf("%q: expected error", command)
+		}
+	}
+}
+
 func TestLineEditCommandSupportsQuotedDescription(t *testing.T) {
 	p := project.New("test")
 	mustExec(t, p, "pt add 1 0 0")

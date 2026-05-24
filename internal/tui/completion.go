@@ -43,6 +43,7 @@ func commandSuggestions(p *project.Project) []string {
 		add("offset " + pt.ID + " <p2> <offset> <chainage> as " + nextPointID + " [code]")
 		add("shift " + pt.ID + " east=<delta> [north=<delta>] [elev=<delta>]")
 		add("rotate " + pt.ID + " <bearing>")
+		add("transform fit " + pt.ID + " <dst1> <src2> <dst2> [<srcN> <dstN> ...]")
 		add("line intersect " + pt.ID + " <a2> <b1> <b2> as " + nextPointID + " [code]")
 		add("intersect bearing-bearing " + pt.ID + " <brg1> <p2> <brg2> as " + nextPointID + " [code]")
 		add("intersect bearing-distance " + pt.ID + " <brg> <p2> <dist> choose near|far as " + nextPointID + " [code]")

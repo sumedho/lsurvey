@@ -36,7 +36,7 @@ func TestFormatPointRowsUsesThreeDecimalPlaces(t *testing.T) {
 	z := 3.4567
 	p := project.New("test")
 	p.Points["1"] = geom.Point{ID: "1", Northing: 1.23456, Easting: 2.34567, Elevation: &z}
-	got := FormatPointRows(p.SortedPoints(), 4, 3)
+	got := FormatPointRows(p.SortedPoints(), 3)
 	for _, want := range []string{"1.235", "2.346", "3.457"} {
 		if !strings.Contains(got, want) {
 			t.Fatalf("point rows missing %q:\n%s", want, got)
@@ -50,11 +50,26 @@ func TestFormatPointRowsUsesThreeDecimalPlaces(t *testing.T) {
 func TestFormatPointRowsUsesConfiguredPrecision(t *testing.T) {
 	p := project.New("test")
 	p.Points["1"] = geom.Point{ID: "1", Northing: 1.23456, Easting: 2.34567}
-	got := FormatPointRows(p.SortedPoints(), 4, 1)
+	got := FormatPointRows(p.SortedPoints(), 1)
 	if !strings.Contains(got, "1.2") || !strings.Contains(got, "2.3") {
 		t.Fatalf("point rows missing one decimal values:\n%s", got)
 	}
 	if strings.Contains(got, "1.235") {
 		t.Fatalf("point rows should use configured precision:\n%s", got)
+	}
+}
+
+func TestFormatLineRowsIncludesContoursWithoutHeightClipping(t *testing.T) {
+	lines := []project.Line{
+		{ID: "L1", From: "1", To: "2", Code: "BOUNDARY", Description: "edge"},
+	}
+	contours := []project.ContourSet{
+		{ID: "C1", Interval: 0.5, Polylines: []project.ContourPolyline{{ID: "PL1"}}},
+	}
+	got := FormatLineRows(lines, contours, 2)
+	for _, want := range []string{"L1", "Contours:", "C1", "0.50"} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("line rows missing %q:\n%s", want, got)
+		}
 	}
 }

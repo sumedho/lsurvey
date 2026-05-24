@@ -199,3 +199,55 @@ func TestRotatePoint(t *testing.T) {
 	assertClose(t, got.Easting, 0)
 	assertClose(t, got.Northing, -10)
 }
+
+func TestFitSimilarityTransform(t *testing.T) {
+	z1, z2, tz1, tz2 := 1.0, 2.0, 4.0, 5.0
+	got, ok := FitSimilarityTransform([]PointPair{
+		{Source: Point{Easting: 0, Northing: 0, Elevation: &z1}, Target: Point{Easting: 100, Northing: 200, Elevation: &tz1}},
+		{Source: Point{Easting: 10, Northing: 0, Elevation: &z2}, Target: Point{Easting: 100, Northing: 180, Elevation: &tz2}},
+		{Source: Point{Easting: 0, Northing: 10}, Target: Point{Easting: 120, Northing: 200}},
+	})
+	if !ok {
+		t.Fatal("expected transform fit")
+	}
+	assertClose(t, got.DX, 100)
+	assertClose(t, got.DY, 200)
+	assertClose(t, got.Scale, 2)
+	assertClose(t, got.RotationDegrees, 90)
+	assertClose(t, got.HorizontalRMS, 0)
+	assertClose(t, *got.DZ, 3)
+	assertClose(t, *got.VerticalRMS, 0)
+	if got.PairCount != 3 || got.VerticalPairs != 2 {
+		t.Fatalf("counts=%d/%d want 3/2", got.PairCount, got.VerticalPairs)
+	}
+}
+
+func TestFitSimilarityTransformReportsNegativeRotationAndResiduals(t *testing.T) {
+	got, ok := FitSimilarityTransform([]PointPair{
+		{Source: Point{Easting: 0, Northing: 0}, Target: Point{Easting: 5, Northing: 7}},
+		{Source: Point{Easting: 10, Northing: 0}, Target: Point{Easting: 5, Northing: 17}},
+		{Source: Point{Easting: 0, Northing: 10}, Target: Point{Easting: -4.9, Northing: 7}},
+	})
+	if !ok {
+		t.Fatal("expected transform fit")
+	}
+	if got.RotationDegrees >= 0 {
+		t.Fatalf("angle=%f want negative", got.RotationDegrees)
+	}
+	if got.HorizontalRMS <= 0 {
+		t.Fatalf("hrms=%f want positive residual", got.HorizontalRMS)
+	}
+	if got.DZ != nil || got.VerticalRMS != nil {
+		t.Fatal("2D fit should not report vertical values")
+	}
+}
+
+func TestFitSimilarityTransformRejectsDegenerateSourcePoints(t *testing.T) {
+	_, ok := FitSimilarityTransform([]PointPair{
+		{Source: Point{Easting: 1, Northing: 2}, Target: Point{Easting: 10, Northing: 20}},
+		{Source: Point{Easting: 1, Northing: 2}, Target: Point{Easting: 11, Northing: 21}},
+	})
+	if ok {
+		t.Fatal("expected degenerate source geometry rejection")
+	}
+}

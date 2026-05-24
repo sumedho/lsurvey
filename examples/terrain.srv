@@ -1,0 +1,1265 @@
+{
+  "schema_version": 2,
+  "name": "terrain",
+  "description": "Example terrain surface for contour generation",
+  "display": {
+    "precision": 3
+  },
+  "units": {
+    "angle": "dd.mmss",
+    "distance": "m"
+  },
+  "points": {
+    "T001": {
+      "id": "T001",
+      "easting": 5000.000,
+      "northing": 10000.000,
+      "elevation": 125.000,
+      "code": "BRK",
+      "description": "grid r01 c01"
+    },
+    "T002": {
+      "id": "T002",
+      "easting": 5010.000,
+      "northing": 10000.000,
+      "elevation": 122.505,
+      "code": "TOPO",
+      "description": "grid r01 c02"
+    },
+    "T003": {
+      "id": "T003",
+      "easting": 5020.000,
+      "northing": 10000.000,
+      "elevation": 118.679,
+      "code": "TOPO",
+      "description": "grid r01 c03"
+    },
+    "T004": {
+      "id": "T004",
+      "easting": 5030.000,
+      "northing": 10000.000,
+      "elevation": 115.656,
+      "code": "TOPO",
+      "description": "grid r01 c04"
+    },
+    "T005": {
+      "id": "T005",
+      "easting": 5040.000,
+      "northing": 10000.000,
+      "elevation": 113.855,
+      "code": "TOPO",
+      "description": "grid r01 c05"
+    },
+    "T006": {
+      "id": "T006",
+      "easting": 5050.000,
+      "northing": 10000.000,
+      "elevation": 112.750,
+      "code": "TOPO",
+      "description": "grid r01 c06"
+    },
+    "T007": {
+      "id": "T007",
+      "easting": 5060.000,
+      "northing": 10000.000,
+      "elevation": 112.008,
+      "code": "TOPO",
+      "description": "grid r01 c07"
+    },
+    "T008": {
+      "id": "T008",
+      "easting": 5070.000,
+      "northing": 10000.000,
+      "elevation": 111.404,
+      "code": "TOPO",
+      "description": "grid r01 c08"
+    },
+    "T009": {
+      "id": "T009",
+      "easting": 5080.000,
+      "northing": 10000.000,
+      "elevation": 110.548,
+      "code": "TOPO",
+      "description": "grid r01 c09"
+    },
+    "T010": {
+      "id": "T010",
+      "easting": 5090.000,
+      "northing": 10000.000,
+      "elevation": 109.204,
+      "code": "TOPO",
+      "description": "grid r01 c10"
+    },
+    "T011": {
+      "id": "T011",
+      "easting": 5100.000,
+      "northing": 10000.000,
+      "elevation": 107.606,
+      "code": "TOPO",
+      "description": "grid r01 c11"
+    },
+    "T012": {
+      "id": "T012",
+      "easting": 5000.000,
+      "northing": 10010.000,
+      "elevation": 125.805,
+      "code": "TOPO",
+      "description": "grid r02 c01"
+    },
+    "T013": {
+      "id": "T013",
+      "easting": 5010.000,
+      "northing": 10010.000,
+      "elevation": 126.100,
+      "code": "BRK",
+      "description": "grid r02 c02"
+    },
+    "T014": {
+      "id": "T014",
+      "easting": 5020.000,
+      "northing": 10010.000,
+      "elevation": 123.607,
+      "code": "TOPO",
+      "description": "grid r02 c03"
+    },
+    "T015": {
+      "id": "T015",
+      "easting": 5030.000,
+      "northing": 10010.000,
+      "elevation": 119.794,
+      "code": "TOPO",
+      "description": "grid r02 c04"
+    },
+    "T016": {
+      "id": "T016",
+      "easting": 5040.000,
+      "northing": 10010.000,
+      "elevation": 116.847,
+      "code": "TOPO",
+      "description": "grid r02 c05"
+    },
+    "T017": {
+      "id": "T017",
+      "easting": 5050.000,
+      "northing": 10010.000,
+      "elevation": 115.306,
+      "code": "TOPO",
+      "description": "grid r02 c06"
+    },
+    "T018": {
+      "id": "T018",
+      "easting": 5060.000,
+      "northing": 10010.000,
+      "elevation": 114.731,
+      "code": "TOPO",
+      "description": "grid r02 c07"
+    },
+    "T019": {
+      "id": "T019",
+      "easting": 5070.000,
+      "northing": 10010.000,
+      "elevation": 114.513,
+      "code": "TOPO",
+      "description": "grid r02 c08"
+    },
+    "T020": {
+      "id": "T020",
+      "easting": 5080.000,
+      "northing": 10010.000,
+      "elevation": 113.856,
+      "code": "TOPO",
+      "description": "grid r02 c09"
+    },
+    "T021": {
+      "id": "T021",
+      "easting": 5090.000,
+      "northing": 10010.000,
+      "elevation": 112.311,
+      "code": "TOPO",
+      "description": "grid r02 c10"
+    },
+    "T022": {
+      "id": "T022",
+      "easting": 5100.000,
+      "northing": 10010.000,
+      "elevation": 110.304,
+      "code": "TOPO",
+      "description": "grid r02 c11"
+    },
+    "T023": {
+      "id": "T023",
+      "easting": 5000.000,
+      "northing": 10020.000,
+      "elevation": 125.277,
+      "code": "BRK",
+      "description": "grid r03 c01"
+    },
+    "T024": {
+      "id": "T024",
+      "easting": 5010.000,
+      "northing": 10020.000,
+      "elevation": 126.905,
+      "code": "BRK",
+      "description": "grid r03 c02"
+    },
+    "T025": {
+      "id": "T025",
+      "easting": 5020.000,
+      "northing": 10020.000,
+      "elevation": 127.202,
+      "code": "BRK",
+      "description": "grid r03 c03"
+    },
+    "T026": {
+      "id": "T026",
+      "easting": 5030.000,
+      "northing": 10020.000,
+      "elevation": 124.725,
+      "code": "BRK",
+      "description": "grid r03 c04"
+    },
+    "T027": {
+      "id": "T027",
+      "easting": 5040.000,
+      "northing": 10020.000,
+      "elevation": 120.999,
+      "code": "BRK",
+      "description": "grid r03 c05"
+    },
+    "T028": {
+      "id": "T028",
+      "easting": 5050.000,
+      "northing": 10020.000,
+      "elevation": 118.343,
+      "code": "BRK",
+      "description": "grid r03 c06"
+    },
+    "T029": {
+      "id": "T029",
+      "easting": 5060.000,
+      "northing": 10020.000,
+      "elevation": 117.347,
+      "code": "BRK",
+      "description": "grid r03 c07"
+    },
+    "T030": {
+      "id": "T030",
+      "easting": 5070.000,
+      "northing": 10020.000,
+      "elevation": 117.183,
+      "code": "BRK",
+      "description": "grid r03 c08"
+    },
+    "T031": {
+      "id": "T031",
+      "easting": 5080.000,
+      "northing": 10020.000,
+      "elevation": 116.602,
+      "code": "BRK",
+      "description": "grid r03 c09"
+    },
+    "T032": {
+      "id": "T032",
+      "easting": 5090.000,
+      "northing": 10020.000,
+      "elevation": 114.956,
+      "code": "BRK",
+      "description": "grid r03 c10"
+    },
+    "T033": {
+      "id": "T033",
+      "easting": 5100.000,
+      "northing": 10020.000,
+      "elevation": 112.747,
+      "code": "BRK",
+      "description": "grid r03 c11"
+    },
+    "T034": {
+      "id": "T034",
+      "easting": 5000.000,
+      "northing": 10030.000,
+      "elevation": 125.514,
+      "code": "TOPO",
+      "description": "grid r04 c01"
+    },
+    "T035": {
+      "id": "T035",
+      "easting": 5010.000,
+      "northing": 10030.000,
+      "elevation": 126.344,
+      "code": "TOPO",
+      "description": "grid r04 c02"
+    },
+    "T036": {
+      "id": "T036",
+      "easting": 5020.000,
+      "northing": 10030.000,
+      "elevation": 127.973,
+      "code": "TOPO",
+      "description": "grid r04 c03"
+    },
+    "T037": {
+      "id": "T037",
+      "easting": 5030.000,
+      "northing": 10030.000,
+      "elevation": 128.283,
+      "code": "BRK",
+      "description": "grid r04 c04"
+    },
+    "T038": {
+      "id": "T038",
+      "easting": 5040.000,
+      "northing": 10030.000,
+      "elevation": 125.872,
+      "code": "TOPO",
+      "description": "grid r04 c05"
+    },
+    "T039": {
+      "id": "T039",
+      "easting": 5050.000,
+      "northing": 10030.000,
+      "elevation": 122.350,
+      "code": "TOPO",
+      "description": "grid r04 c06"
+    },
+    "T040": {
+      "id": "T040",
+      "easting": 5060.000,
+      "northing": 10030.000,
+      "elevation": 120.017,
+      "code": "TOPO",
+      "description": "grid r04 c07"
+    },
+    "T041": {
+      "id": "T041",
+      "easting": 5070.000,
+      "northing": 10030.000,
+      "elevation": 119.077,
+      "code": "TOPO",
+      "description": "grid r04 c08"
+    },
+    "T042": {
+      "id": "T042",
+      "easting": 5080.000,
+      "northing": 10030.000,
+      "elevation": 118.250,
+      "code": "TOPO",
+      "description": "grid r04 c09"
+    },
+    "T043": {
+      "id": "T043",
+      "easting": 5090.000,
+      "northing": 10030.000,
+      "elevation": 116.680,
+      "code": "TOPO",
+      "description": "grid r04 c10"
+    },
+    "T044": {
+      "id": "T044",
+      "easting": 5100.000,
+      "northing": 10030.000,
+      "elevation": 114.670,
+      "code": "TOPO",
+      "description": "grid r04 c11"
+    },
+    "T045": {
+      "id": "T045",
+      "easting": 5000.000,
+      "northing": 10040.000,
+      "elevation": 126.458,
+      "code": "TOPO",
+      "description": "grid r05 c01"
+    },
+    "T046": {
+      "id": "T046",
+      "easting": 5010.000,
+      "northing": 10040.000,
+      "elevation": 126.106,
+      "code": "TOPO",
+      "description": "grid r05 c02"
+    },
+    "T047": {
+      "id": "T047",
+      "easting": 5020.000,
+      "northing": 10040.000,
+      "elevation": 126.937,
+      "code": "TOPO",
+      "description": "grid r05 c03"
+    },
+    "T048": {
+      "id": "T048",
+      "easting": 5030.000,
+      "northing": 10040.000,
+      "elevation": 128.572,
+      "code": "TOPO",
+      "description": "grid r05 c04"
+    },
+    "T049": {
+      "id": "T049",
+      "easting": 5040.000,
+      "northing": 10040.000,
+      "elevation": 128.913,
+      "code": "BRK",
+      "description": "grid r05 c05"
+    },
+    "T050": {
+      "id": "T050",
+      "easting": 5050.000,
+      "northing": 10040.000,
+      "elevation": 126.586,
+      "code": "TOPO",
+      "description": "grid r05 c06"
+    },
+    "T051": {
+      "id": "T051",
+      "easting": 5060.000,
+      "northing": 10040.000,
+      "elevation": 123.142,
+      "code": "TOPO",
+      "description": "grid r05 c07"
+    },
+    "T052": {
+      "id": "T052",
+      "easting": 5070.000,
+      "northing": 10040.000,
+      "elevation": 120.609,
+      "code": "TOPO",
+      "description": "grid r05 c08"
+    },
+    "T053": {
+      "id": "T053",
+      "easting": 5080.000,
+      "northing": 10040.000,
+      "elevation": 119.006,
+      "code": "TOPO",
+      "description": "grid r05 c09"
+    },
+    "T054": {
+      "id": "T054",
+      "easting": 5090.000,
+      "northing": 10040.000,
+      "elevation": 117.489,
+      "code": "TOPO",
+      "description": "grid r05 c10"
+    },
+    "T055": {
+      "id": "T055",
+      "easting": 5100.000,
+      "northing": 10040.000,
+      "elevation": 115.866,
+      "code": "TOPO",
+      "description": "grid r05 c11"
+    },
+    "T056": {
+      "id": "T056",
+      "easting": 5000.000,
+      "northing": 10050.000,
+      "elevation": 126.158,
+      "code": "TOPO",
+      "description": "grid r06 c01"
+    },
+    "T057": {
+      "id": "T057",
+      "easting": 5010.000,
+      "northing": 10050.000,
+      "elevation": 125.231,
+      "code": "TOPO",
+      "description": "grid r06 c02"
+    },
+    "T058": {
+      "id": "T058",
+      "easting": 5020.000,
+      "northing": 10050.000,
+      "elevation": 124.879,
+      "code": "TOPO",
+      "description": "grid r06 c03"
+    },
+    "T059": {
+      "id": "T059",
+      "easting": 5030.000,
+      "northing": 10050.000,
+      "elevation": 125.712,
+      "code": "TOPO",
+      "description": "grid r06 c04"
+    },
+    "T060": {
+      "id": "T060",
+      "easting": 5040.000,
+      "northing": 10050.000,
+      "elevation": 127.357,
+      "code": "TOPO",
+      "description": "grid r06 c05"
+    },
+    "T061": {
+      "id": "T061",
+      "easting": 5050.000,
+      "northing": 10050.000,
+      "elevation": 127.713,
+      "code": "BRK",
+      "description": "grid r06 c06"
+    },
+    "T062": {
+      "id": "T062",
+      "easting": 5060.000,
+      "northing": 10050.000,
+      "elevation": 125.359,
+      "code": "TOPO",
+      "description": "grid r06 c07"
+    },
+    "T063": {
+      "id": "T063",
+      "easting": 5070.000,
+      "northing": 10050.000,
+      "elevation": 121.715,
+      "code": "TOPO",
+      "description": "grid r06 c08"
+    },
+    "T064": {
+      "id": "T064",
+      "easting": 5080.000,
+      "northing": 10050.000,
+      "elevation": 118.774,
+      "code": "TOPO",
+      "description": "grid r06 c09"
+    },
+    "T065": {
+      "id": "T065",
+      "easting": 5090.000,
+      "northing": 10050.000,
+      "elevation": 116.837,
+      "code": "TOPO",
+      "description": "grid r06 c10"
+    },
+    "T066": {
+      "id": "T066",
+      "easting": 5100.000,
+      "northing": 10050.000,
+      "elevation": 115.381,
+      "code": "TOPO",
+      "description": "grid r06 c11"
+    },
+    "T067": {
+      "id": "T067",
+      "easting": 5000.000,
+      "northing": 10060.000,
+      "elevation": 126.202,
+      "code": "BRK",
+      "description": "grid r07 c01"
+    },
+    "T068": {
+      "id": "T068",
+      "easting": 5010.000,
+      "northing": 10060.000,
+      "elevation": 125.127,
+      "code": "BRK",
+      "description": "grid r07 c02"
+    },
+    "T069": {
+      "id": "T069",
+      "easting": 5020.000,
+      "northing": 10060.000,
+      "elevation": 124.200,
+      "code": "BRK",
+      "description": "grid r07 c03"
+    },
+    "T070": {
+      "id": "T070",
+      "easting": 5030.000,
+      "northing": 10060.000,
+      "elevation": 123.848,
+      "code": "BRK",
+      "description": "grid r07 c04"
+    },
+    "T071": {
+      "id": "T071",
+      "easting": 5040.000,
+      "northing": 10060.000,
+      "elevation": 124.683,
+      "code": "BRK",
+      "description": "grid r07 c05"
+    },
+    "T072": {
+      "id": "T072",
+      "easting": 5050.000,
+      "northing": 10060.000,
+      "elevation": 126.325,
+      "code": "BRK",
+      "description": "grid r07 c06"
+    },
+    "T073": {
+      "id": "T073",
+      "easting": 5060.000,
+      "northing": 10060.000,
+      "elevation": 126.655,
+      "code": "BRK",
+      "description": "grid r07 c07"
+    },
+    "T074": {
+      "id": "T074",
+      "easting": 5070.000,
+      "northing": 10060.000,
+      "elevation": 124.205,
+      "code": "BRK",
+      "description": "grid r07 c08"
+    },
+    "T075": {
+      "id": "T075",
+      "easting": 5080.000,
+      "northing": 10060.000,
+      "elevation": 120.400,
+      "code": "BRK",
+      "description": "grid r07 c09"
+    },
+    "T076": {
+      "id": "T076",
+      "easting": 5090.000,
+      "northing": 10060.000,
+      "elevation": 117.347,
+      "code": "BRK",
+      "description": "grid r07 c10"
+    },
+    "T077": {
+      "id": "T077",
+      "easting": 5100.000,
+      "northing": 10060.000,
+      "elevation": 115.455,
+      "code": "BRK",
+      "description": "grid r07 c11"
+    },
+    "T078": {
+      "id": "T078",
+      "easting": 5000.000,
+      "northing": 10070.000,
+      "elevation": 130.531,
+      "code": "TOPO",
+      "description": "grid r08 c01"
+    },
+    "T079": {
+      "id": "T079",
+      "easting": 5010.000,
+      "northing": 10070.000,
+      "elevation": 129.434,
+      "code": "TOPO",
+      "description": "grid r08 c02"
+    },
+    "T080": {
+      "id": "T080",
+      "easting": 5020.000,
+      "northing": 10070.000,
+      "elevation": 128.358,
+      "code": "TOPO",
+      "description": "grid r08 c03"
+    },
+    "T081": {
+      "id": "T081",
+      "easting": 5030.000,
+      "northing": 10070.000,
+      "elevation": 127.431,
+      "code": "TOPO",
+      "description": "grid r08 c04"
+    },
+    "T082": {
+      "id": "T082",
+      "easting": 5040.000,
+      "northing": 10070.000,
+      "elevation": 127.079,
+      "code": "TOPO",
+      "description": "grid r08 c05"
+    },
+    "T083": {
+      "id": "T083",
+      "easting": 5050.000,
+      "northing": 10070.000,
+      "elevation": 127.912,
+      "code": "TOPO",
+      "description": "grid r08 c06"
+    },
+    "T084": {
+      "id": "T084",
+      "easting": 5060.000,
+      "northing": 10070.000,
+      "elevation": 129.545,
+      "code": "TOPO",
+      "description": "grid r08 c07"
+    },
+    "T085": {
+      "id": "T085",
+      "easting": 5070.000,
+      "northing": 10070.000,
+      "elevation": 129.848,
+      "code": "BRK",
+      "description": "grid r08 c08"
+    },
+    "T086": {
+      "id": "T086",
+      "easting": 5080.000,
+      "northing": 10070.000,
+      "elevation": 127.357,
+      "code": "TOPO",
+      "description": "grid r08 c09"
+    },
+    "T087": {
+      "id": "T087",
+      "easting": 5090.000,
+      "northing": 10070.000,
+      "elevation": 123.526,
+      "code": "TOPO",
+      "description": "grid r08 c10"
+    },
+    "T088": {
+      "id": "T088",
+      "easting": 5100.000,
+      "northing": 10070.000,
+      "elevation": 120.488,
+      "code": "TOPO",
+      "description": "grid r08 c11"
+    },
+    "T089": {
+      "id": "T089",
+      "easting": 5000.000,
+      "northing": 10080.000,
+      "elevation": 135.058,
+      "code": "TOPO",
+      "description": "grid r09 c01"
+    },
+    "T090": {
+      "id": "T090",
+      "easting": 5010.000,
+      "northing": 10080.000,
+      "elevation": 133.958,
+      "code": "TOPO",
+      "description": "grid r09 c02"
+    },
+    "T091": {
+      "id": "T091",
+      "easting": 5020.000,
+      "northing": 10080.000,
+      "elevation": 132.861,
+      "code": "TOPO",
+      "description": "grid r09 c03"
+    },
+    "T092": {
+      "id": "T092",
+      "easting": 5030.000,
+      "northing": 10080.000,
+      "elevation": 131.785,
+      "code": "TOPO",
+      "description": "grid r09 c04"
+    },
+    "T093": {
+      "id": "T093",
+      "easting": 5040.000,
+      "northing": 10080.000,
+      "elevation": 130.858,
+      "code": "TOPO",
+      "description": "grid r09 c05"
+    },
+    "T094": {
+      "id": "T094",
+      "easting": 5050.000,
+      "northing": 10080.000,
+      "elevation": 130.506,
+      "code": "TOPO",
+      "description": "grid r09 c06"
+    },
+    "T095": {
+      "id": "T095",
+      "easting": 5060.000,
+      "northing": 10080.000,
+      "elevation": 131.337,
+      "code": "TOPO",
+      "description": "grid r09 c07"
+    },
+    "T096": {
+      "id": "T096",
+      "easting": 5070.000,
+      "northing": 10080.000,
+      "elevation": 132.965,
+      "code": "TOPO",
+      "description": "grid r09 c08"
+    },
+    "T097": {
+      "id": "T097",
+      "easting": 5080.000,
+      "northing": 10080.000,
+      "elevation": 133.260,
+      "code": "BRK",
+      "description": "grid r09 c09"
+    },
+    "T098": {
+      "id": "T098",
+      "easting": 5090.000,
+      "northing": 10080.000,
+      "elevation": 130.765,
+      "code": "TOPO",
+      "description": "grid r09 c10"
+    },
+    "T099": {
+      "id": "T099",
+      "easting": 5100.000,
+      "northing": 10080.000,
+      "elevation": 126.937,
+      "code": "TOPO",
+      "description": "grid r09 c11"
+    },
+    "T100": {
+      "id": "T100",
+      "easting": 5000.000,
+      "northing": 10090.000,
+      "elevation": 137.766,
+      "code": "BRK",
+      "description": "grid r10 c01"
+    },
+    "T101": {
+      "id": "T101",
+      "easting": 5010.000,
+      "northing": 10090.000,
+      "elevation": 136.666,
+      "code": "BRK",
+      "description": "grid r10 c02"
+    },
+    "T102": {
+      "id": "T102",
+      "easting": 5020.000,
+      "northing": 10090.000,
+      "elevation": 135.566,
+      "code": "BRK",
+      "description": "grid r10 c03"
+    },
+    "T103": {
+      "id": "T103",
+      "easting": 5030.000,
+      "northing": 10090.000,
+      "elevation": 134.469,
+      "code": "BRK",
+      "description": "grid r10 c04"
+    },
+    "T104": {
+      "id": "T104",
+      "easting": 5040.000,
+      "northing": 10090.000,
+      "elevation": 133.393,
+      "code": "BRK",
+      "description": "grid r10 c05"
+    },
+    "T105": {
+      "id": "T105",
+      "easting": 5050.000,
+      "northing": 10090.000,
+      "elevation": 132.466,
+      "code": "BRK",
+      "description": "grid r10 c06"
+    },
+    "T106": {
+      "id": "T106",
+      "easting": 5060.000,
+      "northing": 10090.000,
+      "elevation": 132.114,
+      "code": "BRK",
+      "description": "grid r10 c07"
+    },
+    "T107": {
+      "id": "T107",
+      "easting": 5070.000,
+      "northing": 10090.000,
+      "elevation": 132.944,
+      "code": "BRK",
+      "description": "grid r10 c08"
+    },
+    "T108": {
+      "id": "T108",
+      "easting": 5080.000,
+      "northing": 10090.000,
+      "elevation": 134.572,
+      "code": "BRK",
+      "description": "grid r10 c09"
+    },
+    "T109": {
+      "id": "T109",
+      "easting": 5090.000,
+      "northing": 10090.000,
+      "elevation": 134.866,
+      "code": "BRK",
+      "description": "grid r10 c10"
+    },
+    "T110": {
+      "id": "T110",
+      "easting": 5100.000,
+      "northing": 10090.000,
+      "elevation": 132.372,
+      "code": "BRK",
+      "description": "grid r10 c11"
+    },
+    "T111": {
+      "id": "T111",
+      "easting": 5000.000,
+      "northing": 10100.000,
+      "elevation": 139.999,
+      "code": "TOPO",
+      "description": "grid r11 c01"
+    },
+    "T112": {
+      "id": "T112",
+      "easting": 5010.000,
+      "northing": 10100.000,
+      "elevation": 138.899,
+      "code": "TOPO",
+      "description": "grid r11 c02"
+    },
+    "T113": {
+      "id": "T113",
+      "easting": 5020.000,
+      "northing": 10100.000,
+      "elevation": 137.799,
+      "code": "TOPO",
+      "description": "grid r11 c03"
+    },
+    "T114": {
+      "id": "T114",
+      "easting": 5030.000,
+      "northing": 10100.000,
+      "elevation": 136.699,
+      "code": "TOPO",
+      "description": "grid r11 c04"
+    },
+    "T115": {
+      "id": "T115",
+      "easting": 5040.000,
+      "northing": 10100.000,
+      "elevation": 135.602,
+      "code": "TOPO",
+      "description": "grid r11 c05"
+    },
+    "T116": {
+      "id": "T116",
+      "easting": 5050.000,
+      "northing": 10100.000,
+      "elevation": 134.526,
+      "code": "TOPO",
+      "description": "grid r11 c06"
+    },
+    "T117": {
+      "id": "T117",
+      "easting": 5060.000,
+      "northing": 10100.000,
+      "elevation": 133.599,
+      "code": "TOPO",
+      "description": "grid r11 c07"
+    },
+    "T118": {
+      "id": "T118",
+      "easting": 5070.000,
+      "northing": 10100.000,
+      "elevation": 133.247,
+      "code": "TOPO",
+      "description": "grid r11 c08"
+    },
+    "T119": {
+      "id": "T119",
+      "easting": 5080.000,
+      "northing": 10100.000,
+      "elevation": 134.077,
+      "code": "TOPO",
+      "description": "grid r11 c09"
+    },
+    "T120": {
+      "id": "T120",
+      "easting": 5090.000,
+      "northing": 10100.000,
+      "elevation": 135.704,
+      "code": "TOPO",
+      "description": "grid r11 c10"
+    },
+    "T121": {
+      "id": "T121",
+      "easting": 5100.000,
+      "northing": 10100.000,
+      "elevation": 135.999,
+      "code": "BRK",
+      "description": "grid r11 c11"
+    }
+  },
+  "lines": {
+    "L01": {
+      "id": "L01",
+      "from": "T001",
+      "to": "T013",
+      "code": "RIDGE",
+      "description": "main ridge crest"
+    },
+    "L02": {
+      "id": "L02",
+      "from": "T013",
+      "to": "T025",
+      "code": "RIDGE",
+      "description": "main ridge crest"
+    },
+    "L03": {
+      "id": "L03",
+      "from": "T025",
+      "to": "T037",
+      "code": "RIDGE",
+      "description": "main ridge crest"
+    },
+    "L04": {
+      "id": "L04",
+      "from": "T037",
+      "to": "T049",
+      "code": "RIDGE",
+      "description": "main ridge crest"
+    },
+    "L05": {
+      "id": "L05",
+      "from": "T049",
+      "to": "T061",
+      "code": "RIDGE",
+      "description": "main ridge crest"
+    },
+    "L06": {
+      "id": "L06",
+      "from": "T061",
+      "to": "T073",
+      "code": "RIDGE",
+      "description": "main ridge crest"
+    },
+    "L07": {
+      "id": "L07",
+      "from": "T073",
+      "to": "T085",
+      "code": "RIDGE",
+      "description": "main ridge crest"
+    },
+    "L08": {
+      "id": "L08",
+      "from": "T085",
+      "to": "T097",
+      "code": "RIDGE",
+      "description": "main ridge crest"
+    },
+    "L09": {
+      "id": "L09",
+      "from": "T097",
+      "to": "T109",
+      "code": "RIDGE",
+      "description": "main ridge crest"
+    },
+    "L10": {
+      "id": "L10",
+      "from": "T109",
+      "to": "T121",
+      "code": "RIDGE",
+      "description": "main ridge crest"
+    },
+    "L11": {
+      "id": "L11",
+      "from": "T067",
+      "to": "T068",
+      "code": "SWALE",
+      "description": "drainage swale"
+    },
+    "L12": {
+      "id": "L12",
+      "from": "T068",
+      "to": "T069",
+      "code": "SWALE",
+      "description": "drainage swale"
+    },
+    "L13": {
+      "id": "L13",
+      "from": "T069",
+      "to": "T070",
+      "code": "SWALE",
+      "description": "drainage swale"
+    },
+    "L14": {
+      "id": "L14",
+      "from": "T070",
+      "to": "T071",
+      "code": "SWALE",
+      "description": "drainage swale"
+    },
+    "L15": {
+      "id": "L15",
+      "from": "T071",
+      "to": "T072",
+      "code": "SWALE",
+      "description": "drainage swale"
+    },
+    "L16": {
+      "id": "L16",
+      "from": "T072",
+      "to": "T073",
+      "code": "SWALE",
+      "description": "drainage swale"
+    },
+    "L17": {
+      "id": "L17",
+      "from": "T073",
+      "to": "T074",
+      "code": "SWALE",
+      "description": "drainage swale"
+    },
+    "L18": {
+      "id": "L18",
+      "from": "T074",
+      "to": "T075",
+      "code": "SWALE",
+      "description": "drainage swale"
+    },
+    "L19": {
+      "id": "L19",
+      "from": "T075",
+      "to": "T076",
+      "code": "SWALE",
+      "description": "drainage swale"
+    },
+    "L20": {
+      "id": "L20",
+      "from": "T076",
+      "to": "T077",
+      "code": "SWALE",
+      "description": "drainage swale"
+    },
+    "L21": {
+      "id": "L21",
+      "from": "T023",
+      "to": "T024",
+      "code": "BENCH",
+      "description": "lower bench"
+    },
+    "L22": {
+      "id": "L22",
+      "from": "T024",
+      "to": "T025",
+      "code": "BENCH",
+      "description": "lower bench"
+    },
+    "L23": {
+      "id": "L23",
+      "from": "T025",
+      "to": "T026",
+      "code": "BENCH",
+      "description": "lower bench"
+    },
+    "L24": {
+      "id": "L24",
+      "from": "T026",
+      "to": "T027",
+      "code": "BENCH",
+      "description": "lower bench"
+    },
+    "L25": {
+      "id": "L25",
+      "from": "T027",
+      "to": "T028",
+      "code": "BENCH",
+      "description": "lower bench"
+    },
+    "L26": {
+      "id": "L26",
+      "from": "T028",
+      "to": "T029",
+      "code": "BENCH",
+      "description": "lower bench"
+    },
+    "L27": {
+      "id": "L27",
+      "from": "T029",
+      "to": "T030",
+      "code": "BENCH",
+      "description": "lower bench"
+    },
+    "L28": {
+      "id": "L28",
+      "from": "T030",
+      "to": "T031",
+      "code": "BENCH",
+      "description": "lower bench"
+    },
+    "L29": {
+      "id": "L29",
+      "from": "T031",
+      "to": "T032",
+      "code": "BENCH",
+      "description": "lower bench"
+    },
+    "L30": {
+      "id": "L30",
+      "from": "T032",
+      "to": "T033",
+      "code": "BENCH",
+      "description": "lower bench"
+    },
+    "L31": {
+      "id": "L31",
+      "from": "T100",
+      "to": "T101",
+      "code": "BENCH",
+      "description": "upper bench"
+    },
+    "L32": {
+      "id": "L32",
+      "from": "T101",
+      "to": "T102",
+      "code": "BENCH",
+      "description": "upper bench"
+    },
+    "L33": {
+      "id": "L33",
+      "from": "T102",
+      "to": "T103",
+      "code": "BENCH",
+      "description": "upper bench"
+    },
+    "L34": {
+      "id": "L34",
+      "from": "T103",
+      "to": "T104",
+      "code": "BENCH",
+      "description": "upper bench"
+    },
+    "L35": {
+      "id": "L35",
+      "from": "T104",
+      "to": "T105",
+      "code": "BENCH",
+      "description": "upper bench"
+    },
+    "L36": {
+      "id": "L36",
+      "from": "T105",
+      "to": "T106",
+      "code": "BENCH",
+      "description": "upper bench"
+    },
+    "L37": {
+      "id": "L37",
+      "from": "T106",
+      "to": "T107",
+      "code": "BENCH",
+      "description": "upper bench"
+    },
+    "L38": {
+      "id": "L38",
+      "from": "T107",
+      "to": "T108",
+      "code": "BENCH",
+      "description": "upper bench"
+    },
+    "L39": {
+      "id": "L39",
+      "from": "T108",
+      "to": "T109",
+      "code": "BENCH",
+      "description": "upper bench"
+    },
+    "L40": {
+      "id": "L40",
+      "from": "T109",
+      "to": "T110",
+      "code": "BENCH",
+      "description": "upper bench"
+    }
+  },
+  "history": []
+}

@@ -75,27 +75,17 @@ func elevationValue(p geom.Point) float64 {
 	return *p.Elevation
 }
 
-func FormatPointRows(points []geom.Point, height int, precision int) string {
+func FormatPointRows(points []geom.Point, precision int) string {
 	var b strings.Builder
 	b.WriteString(fmt.Sprintf("%-10s %14s %14s %12s %-10s %s\n", "ID", "Easting", "Northing", "Elevation", "Code", "Description"))
 	b.WriteString(strings.Repeat("-", 78))
 	b.WriteByte('\n')
-	limit := height - 2
-	if limit < 0 {
-		limit = 0
-	}
-	if len(points) < limit {
-		limit = len(points)
-	}
-	for _, pt := range points[:limit] {
+	for _, pt := range points {
 		elev := ""
 		if pt.Elevation != nil {
 			elev = formatDecimal(*pt.Elevation, precision)
 		}
 		fmt.Fprintf(&b, "%-10s %14s %14s %12s %-10s %s\n", pt.ID, formatDecimal(pt.Easting, precision), formatDecimal(pt.Northing, precision), elev, pt.Code, pt.Description)
-	}
-	if len(points) > limit {
-		fmt.Fprintf(&b, "... %d more\n", len(points)-limit)
 	}
 	return b.String()
 }
@@ -104,35 +94,18 @@ func formatDecimal(value float64, precision int) string {
 	return strconv.FormatFloat(value, 'f', precision, 64)
 }
 
-func FormatLineRows(lines []project.Line, contours []project.ContourSet, height int, precision int) string {
+func FormatLineRows(lines []project.Line, contours []project.ContourSet, precision int) string {
 	var b strings.Builder
 	b.WriteString(fmt.Sprintf("%-10s %-10s %-10s %-12s %s\n", "ID", "From", "To", "Code", "Description"))
 	b.WriteString(strings.Repeat("-", 58))
 	b.WriteByte('\n')
-	limit := height - 2
-	if limit < 0 {
-		limit = 0
-	}
-	if len(lines) < limit {
-		limit = len(lines)
-	}
-	for _, line := range lines[:limit] {
+	for _, line := range lines {
 		fmt.Fprintf(&b, "%-10s %-10s %-10s %-12s %s\n", line.ID, line.From, line.To, line.Code, line.Description)
 	}
-	if len(lines) > limit {
-		fmt.Fprintf(&b, "... %d more\n", len(lines)-limit)
-	}
-	if len(contours) > 0 && limit > len(lines) {
+	if len(contours) > 0 {
 		b.WriteString("Contours:\n")
-		remaining := limit - len(lines) - 1
-		if remaining > len(contours) {
-			remaining = len(contours)
-		}
-		for _, set := range contours[:remaining] {
+		for _, set := range contours {
 			fmt.Fprintf(&b, "  %-10s interval=%s polylines=%d\n", set.ID, formatDecimal(set.Interval, precision), len(set.Polylines))
-		}
-		if len(contours) > remaining {
-			fmt.Fprintf(&b, "... %d more contour sets\n", len(contours)-remaining)
 		}
 	}
 	return b.String()

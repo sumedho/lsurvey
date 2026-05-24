@@ -32,6 +32,23 @@ type CloseResult struct {
 	Misclose  InverseResult
 }
 
+type PointPair struct {
+	Source Point
+	Target Point
+}
+
+type SimilarityTransformResult struct {
+	DX              float64
+	DY              float64
+	DZ              *float64
+	RotationDegrees float64
+	Scale           float64
+	HorizontalRMS   float64
+	VerticalRMS     *float64
+	PairCount       int
+	VerticalPairs   int
+}
+
 func Inverse(from, to Point) InverseResult {
 	dn := to.Northing - from.Northing
 	de := to.Easting - from.Easting
@@ -93,6 +110,82 @@ func Close(points []Point) (CloseResult, bool) {
 		Perimeter: perimeter,
 		Misclose:  misclose,
 	}, true
+}
+
+func FitSimilarityTransform(pairs []PointPair) (SimilarityTransformResult, bool) {
+	if len(pairs) < 2 {
+		return SimilarityTransformResult{}, false
+	}
+	var sourceE, sourceN, targetE, targetN float64
+	for _, pair := range pairs {
+		sourceE += pair.Source.Easting
+		sourceN += pair.Source.Northing
+		targetE += pair.Target.Easting
+		targetN += pair.Target.Northing
+	}
+	count := float64(len(pairs))
+	sourceE /= count
+	sourceN /= count
+	targetE /= count
+	targetN /= count
+
+	var denominator, numeratorA, numeratorB float64
+	for _, pair := range pairs {
+		de := pair.Source.Easting - sourceE
+		dn := pair.Source.Northing - sourceN
+		te := pair.Target.Easting - targetE
+		tn := pair.Target.Northing - targetN
+		denominator += de*de + dn*dn
+		numeratorA += de*te + dn*tn
+		numeratorB += dn*te - de*tn
+	}
+	if denominator < 1e-12 {
+		return SimilarityTransformResult{}, false
+	}
+	a := numeratorA / denominator
+	b := numeratorB / denominator
+	scale := math.Hypot(a, b)
+	if scale < 1e-12 {
+		return SimilarityTransformResult{}, false
+	}
+
+	result := SimilarityTransformResult{
+		DX:              targetE - a*sourceE - b*sourceN,
+		DY:              targetN - a*sourceN + b*sourceE,
+		RotationDegrees: math.Atan2(b, a) * RadToDeg,
+		Scale:           scale,
+		PairCount:       len(pairs),
+	}
+	var horizontalResidualSquares float64
+	var elevationDiffs []float64
+	for _, pair := range pairs {
+		fittedE := result.DX + a*pair.Source.Easting + b*pair.Source.Northing
+		fittedN := result.DY + a*pair.Source.Northing - b*pair.Source.Easting
+		de := pair.Target.Easting - fittedE
+		dn := pair.Target.Northing - fittedN
+		horizontalResidualSquares += de*de + dn*dn
+		if pair.Source.Elevation != nil && pair.Target.Elevation != nil {
+			elevationDiffs = append(elevationDiffs, *pair.Target.Elevation-*pair.Source.Elevation)
+		}
+	}
+	result.HorizontalRMS = math.Sqrt(horizontalResidualSquares / count)
+	if len(elevationDiffs) > 0 {
+		var dz float64
+		for _, diff := range elevationDiffs {
+			dz += diff
+		}
+		dz /= float64(len(elevationDiffs))
+		var residualSquares float64
+		for _, diff := range elevationDiffs {
+			residual := diff - dz
+			residualSquares += residual * residual
+		}
+		zrms := math.Sqrt(residualSquares / float64(len(elevationDiffs)))
+		result.DZ = &dz
+		result.VerticalRMS = &zrms
+		result.VerticalPairs = len(elevationDiffs)
+	}
+	return result, true
 }
 
 func Radiate(from Point, azimuth Angle, horizontalDistance float64, elevationDelta *float64, id, code string) Point {

@@ -55,6 +55,8 @@ func Execute(p *project.Project, command string) (Result, error) {
 		return execShift(p, fields)
 	case "rotate":
 		return execRotate(p, fields)
+	case "transform":
+		return execTransform(p, fields)
 	case "trav":
 		return execTraverse(p, fields)
 	case "contour":
@@ -864,6 +866,48 @@ func execRotate(p *project.Project, f []string) (Result, error) {
 		updated = append(updated, "contour:"+id)
 	}
 	return Result{Message: fmt.Sprintf("rotated %d points by %s", len(p.Points), f[2]), Updated: updated}, nil
+}
+
+func execTransform(p *project.Project, f []string) (Result, error) {
+	const usage = "usage: transform fit <src1> <dst1> <src2> <dst2> [<srcN> <dstN> ...]"
+	if len(f) < 6 || f[1] != "fit" || (len(f)-2)%2 != 0 {
+		return Result{}, fmt.Errorf(usage)
+	}
+	pairs := make([]geom.PointPair, 0, (len(f)-2)/2)
+	for i := 2; i < len(f); i += 2 {
+		source, err := point(p, f[i])
+		if err != nil {
+			return Result{}, err
+		}
+		target, err := point(p, f[i+1])
+		if err != nil {
+			return Result{}, err
+		}
+		pairs = append(pairs, geom.PointPair{Source: source, Target: target})
+	}
+	fit, ok := geom.FitSimilarityTransform(pairs)
+	if !ok {
+		return Result{}, fmt.Errorf("transform fit requires distinct source points and a determinate scale and rotation")
+	}
+	precision := p.DisplayPrecision()
+	dz := "n/a"
+	zrms := "n/a"
+	if fit.DZ != nil {
+		dz = formatDistance(*fit.DZ, precision)
+		zrms = formatDistance(*fit.VerticalRMS, precision)
+	}
+	return Result{Message: fmt.Sprintf(
+		"dx=%s dy=%s dz=%s angle=%s scale=%.8f hrms=%s zrms=%s pairs=%d zpairs=%d",
+		formatDistance(fit.DX, precision),
+		formatDistance(fit.DY, precision),
+		dz,
+		geom.FormatSignedDMS(fit.RotationDegrees, 2),
+		fit.Scale,
+		formatDistance(fit.HorizontalRMS, precision),
+		zrms,
+		fit.PairCount,
+		fit.VerticalPairs,
+	)}, nil
 }
 
 func execTraverse(p *project.Project, f []string) (Result, error) {

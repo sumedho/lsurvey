@@ -2,6 +2,7 @@ package tui
 
 import (
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -298,6 +299,40 @@ func TestUpDownBrowseCommandHistory(t *testing.T) {
 	}
 }
 
+func TestTabCyclesFocusOnlyWhenCommandInputIsBlank(t *testing.T) {
+	m := NewModel(project.New("test"), "")
+
+	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyTab})
+	m = updated.(Model)
+	if m.focus != focusPoints {
+		t.Fatalf("focus=%v want points", m.focus)
+	}
+
+	m.focus = focusCommand
+	m.syncInputFocus()
+	m.input.SetValue("he")
+	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyTab})
+	m = updated.(Model)
+	if m.focus != focusCommand {
+		t.Fatalf("focus=%v want command", m.focus)
+	}
+	if m.input.Value() == "he" {
+		t.Fatalf("tab should still perform completion when command input is not blank")
+	}
+}
+
+func TestShiftTabCyclesFocusBackward(t *testing.T) {
+	m := NewModel(project.New("test"), "")
+	m.focus = focusPoints
+	m.syncInputFocus()
+
+	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyShiftTab})
+	m = updated.(Model)
+	if m.focus != focusCommand {
+		t.Fatalf("focus=%v want command", m.focus)
+	}
+}
+
 func TestDuplicateConsecutiveHistoryNotRecorded(t *testing.T) {
 	model := NewModel(project.New("test"), "")
 	model.recordHistory("help")
@@ -440,6 +475,202 @@ func TestViewRendersBoxedRegionsWithCommandLast(t *testing.T) {
 	}
 	if !strings.Contains(view, ">") {
 		t.Fatalf("command input prompt missing:\n%s", view)
+	}
+}
+
+func TestViewShowsPointScrollPercentageOnlyWhenScrollable(t *testing.T) {
+	p := project.New("test")
+	for i := 0; i < 40; i++ {
+		id := strconv.Itoa(i + 1)
+		p.Points[id] = geom.Point{ID: id, Easting: float64(i), Northing: float64(i)}
+	}
+	m := NewModel(p, "")
+	m.width = 80
+	m.height = 24
+	m.focus = focusPoints
+	m.syncInputFocus()
+	m.syncMainViewports()
+
+	if view := m.View(); !strings.Contains(view, "Points [active] 0%") {
+		t.Fatalf("top view missing scroll percentage:\n%s", view)
+	}
+
+	m.pointsView.ScrollDown(1)
+	if title := m.viewportPaneTitle("Points", focusPoints, m.pointsView); !strings.Contains(title, "%") || strings.Contains(title, "0%") || strings.Contains(title, "100%") {
+		t.Fatalf("scrolled title=%q want intermediate percentage", title)
+	}
+
+	m.pointsView.GotoBottom()
+	if view := m.View(); !strings.Contains(view, "Points [active] 100%") {
+		t.Fatalf("bottom view missing completed percentage:\n%s", view)
+	}
+
+	short := NewModel(project.New("short"), "")
+	short.width = 80
+	short.height = 24
+	if view := short.View(); strings.Contains(view, "Points 100%") || strings.Contains(view, "Lines 100%") {
+		t.Fatalf("short panes should not show scroll percentages:\n%s", view)
+	}
+}
+
+func TestFocusedViewportHandlesArrowAndPageKeys(t *testing.T) {
+	p := project.New("test")
+	for i := 0; i < 40; i++ {
+		id := strconv.Itoa(i + 1)
+		p.Points[id] = geom.Point{ID: id, Easting: float64(i), Northing: float64(i)}
+	}
+	m := NewModel(p, "")
+	m.width = 80
+	m.height = 24
+	m.syncMainViewports()
+	m.focus = focusPoints
+	m.syncInputFocus()
+
+	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyDown})
+	m = updated.(Model)
+	if m.pointsView.YOffset == 0 {
+		t.Fatal("expected point viewport to scroll down")
+	}
+
+	start := m.pointsView.YOffset
+	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyPgDown})
+	m = updated.(Model)
+	if m.pointsView.YOffset <= start {
+		t.Fatal("expected page down to advance point viewport")
+	}
+}
+
+func TestCommandHistoryStillWorksWhenCommandFocused(t *testing.T) {
+	m := NewModel(project.New("test"), "")
+	m.recordHistory("pt add 1 0 0")
+	m.recordHistory("pt add 2 0 1")
+	m.focus = focusCommand
+	m.syncInputFocus()
+
+	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyUp})
+	m = updated.(Model)
+	if m.input.Value() != "pt add 2 0 1" {
+		t.Fatalf("input=%q want latest history entry", m.input.Value())
+	}
+}
+
+func TestMouseWheelScrollsViewportUnderCursor(t *testing.T) {
+	p := project.New("test")
+	for i := 0; i < 40; i++ {
+		id := strconv.Itoa(i + 1)
+		p.Points[id] = geom.Point{ID: id, Easting: float64(i), Northing: float64(i)}
+	}
+	p.Lines["L1"] = project.Line{ID: "L1", From: "1", To: "2"}
+	m := NewModel(p, "")
+	m.width = 80
+	m.height = 24
+	m.syncMainViewports()
+
+	updated, _ := m.Update(tea.MouseMsg{
+		X:      10,
+		Y:      6,
+		Button: tea.MouseButtonWheelDown,
+		Action: tea.MouseActionPress,
+	})
+	m = updated.(Model)
+	if m.focus != focusPoints {
+		t.Fatalf("focus=%v want points", m.focus)
+	}
+	if m.pointsView.YOffset == 0 {
+		t.Fatal("expected point viewport wheel scroll")
+	}
+}
+
+func TestMouseWheelScrollsPointsAddedAfterModelCreation(t *testing.T) {
+	m := NewModel(project.New("test"), "")
+	m.width = 80
+	m.height = 24
+	for i := 0; i < 40; i++ {
+		id := strconv.Itoa(i + 1)
+		m.ExecuteCommand("pt add " + id + " " + id + " " + id)
+	}
+
+	updated, _ := m.Update(tea.MouseMsg{
+		X:      10,
+		Y:      6,
+		Button: tea.MouseButtonWheelDown,
+		Action: tea.MouseActionPress,
+	})
+	m = updated.(Model)
+	if m.pointsView.YOffset == 0 {
+		t.Fatal("expected newly populated point viewport to scroll")
+	}
+}
+
+func TestMouseWheelFallsBackToActiveViewportWhenHitTestingMisses(t *testing.T) {
+	p := project.New("test")
+	for i := 0; i < 40; i++ {
+		id := strconv.Itoa(i + 1)
+		p.Points[id] = geom.Point{ID: id, Easting: float64(i), Northing: float64(i)}
+	}
+	m := NewModel(p, "")
+	m.width = 80
+	m.height = 24
+	m.syncMainViewports()
+	m.focus = focusPoints
+	m.syncInputFocus()
+
+	updated, _ := m.Update(tea.MouseMsg{
+		X:      -1,
+		Y:      -1,
+		Button: tea.MouseButtonWheelDown,
+		Action: tea.MouseActionPress,
+	})
+	m = updated.(Model)
+	if m.pointsView.YOffset == 0 {
+		t.Fatal("expected active point viewport to scroll on wheel fallback")
+	}
+}
+
+func TestMouseWheelDefaultsToPointsWhenCommandIsFocused(t *testing.T) {
+	p := project.New("test")
+	for i := 0; i < 40; i++ {
+		id := strconv.Itoa(i + 1)
+		p.Points[id] = geom.Point{ID: id, Easting: float64(i), Northing: float64(i)}
+	}
+	m := NewModel(p, "")
+	m.width = 80
+	m.height = 24
+	m.syncMainViewports()
+	m.focus = focusCommand
+	m.syncInputFocus()
+
+	updated, _ := m.Update(tea.MouseMsg{
+		X:      -1,
+		Y:      -1,
+		Button: tea.MouseButtonWheelDown,
+		Action: tea.MouseActionPress,
+	})
+	m = updated.(Model)
+	if m.focus != focusPoints {
+		t.Fatalf("focus=%v want points", m.focus)
+	}
+	if m.pointsView.YOffset == 0 {
+		t.Fatal("expected wheel fallback to scroll points when command is focused")
+	}
+}
+
+func TestClickingCommandPaneRestoresInputFocus(t *testing.T) {
+	m := NewModel(project.New("test"), "")
+	m.width = 80
+	m.height = 24
+	m.focus = focusPoints
+	m.syncInputFocus()
+
+	updated, _ := m.Update(tea.MouseMsg{
+		X:      10,
+		Y:      20,
+		Button: tea.MouseButtonLeft,
+		Action: tea.MouseActionPress,
+	})
+	m = updated.(Model)
+	if m.focus != focusCommand || !m.input.Focused() {
+		t.Fatalf("focus=%v input focused=%v want command focus", m.focus, m.input.Focused())
 	}
 }
 

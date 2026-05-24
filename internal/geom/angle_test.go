@@ -72,6 +72,18 @@ func TestFormatDMSWithSymbolsAndHundredths(t *testing.T) {
 	}
 }
 
+func TestFormatSignedDMS(t *testing.T) {
+	if got := FormatSignedDMS(15.5, 2); got != "+15°30′00.00″" {
+		t.Fatalf("got %q want positive angle", got)
+	}
+	if got := FormatSignedDMS(-15.5, 2); got != "-15°30′00.00″" {
+		t.Fatalf("got %q want negative angle", got)
+	}
+	if got := FormatSignedDMS(-0.00000001, 2); got != "+0°00′00.00″" {
+		t.Fatalf("got %q want rounded positive zero", got)
+	}
+}
+
 func TestFormatQuadrant(t *testing.T) {
 	tests := []struct {
 		degrees float64

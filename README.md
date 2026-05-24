@@ -8,6 +8,9 @@ The application is written in Go. The calculation engine is separate from the
 Bubble Tea terminal UI so a web UI can be added later without replacing the
 COGO/project code.
 
+For a full beginner walkthrough that covers the command workflow end to end,
+see [TUTORIAL.md](/Users/sumedho/Documents/repos/lsurvey/TUTORIAL.md).
+
 ## Features
 
 - Bubble Tea TUI with a command line at the bottom.
@@ -201,6 +204,7 @@ rad3d <from> <azimuth|bearing> <slope_distance> <zenith> as <id> [code]
 midpoint <p1> <p2> as <id> [code]
 offset <p1> <p2> <offset> <chainage> as <id> [code]
 offset <line_id> <offset> <chainage> as <id> [code]
+transform fit <src1> <dst1> <src2> <dst2> [<srcN> <dstN> ...]
 ```
 
 Examples:
@@ -214,6 +218,7 @@ rad3d 1 90.0000 10 90.0000 as 4 SHOT
 midpoint 1 2 as 10 MID
 offset 1 2 5 25 as 20 OFF
 offset L1 5 25 as 20 OFF
+transform fit A1 B1 A2 B2 A3 B3
 ```
 
 `inverse` reports azimuth, horizontal distance, north/east deltas, and 3D
@@ -227,6 +232,12 @@ horizontal; smaller angles go up and larger angles go down.
 
 Positive offset is calculated to the left of the direction from the first point
 to the second point, or from the stored line's `from` point to its `to` point.
+
+`transform fit` calculates a source-to-target similarity transformation without
+modifying project data. It reports easting/northing shift (`dx`, `dy`), signed
+rotation using the same positive direction as `rotate`, scale, and horizontal
+RMS residual. `dz` and vertical RMS use only corresponding pairs where both
+points have elevations.
 
 ## Intersection Commands
 
@@ -256,7 +267,8 @@ a best-fit point from the three lines.
 
 ```text
 trav start <point>
-trav leg <azimuth|bearing> <distance> [vdiff <delta>] as <id> [code]
+trav leg <azimuth|bearing> <distance> [vdiff <delta>] [code]
+trav show
 trav close <known_point>
 trav adjust compass|transit
 ```
@@ -265,8 +277,9 @@ Examples:
 
 ```text
 trav start 1
-trav leg 90.0000 25 as 2 TRV
-trav leg 180.0000 30 vdiff -0.2 as 3 TRV
+trav leg 90.0000 25 TRV
+trav leg 180.0000 30 vdiff -0.2 TRV
+trav show
 trav close 99
 trav adjust compass
 ```
@@ -346,6 +359,8 @@ help rad
 ```text
 import csv <file>
 export csv <file>
+import geojson <file>
+export geojson <file>
 export dxf <file>
 ```
 
@@ -354,6 +369,8 @@ Examples:
 ```text
 import csv points
 export csv points
+import geojson survey
+export geojson survey
 export dxf job
 ```
 
