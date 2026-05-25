@@ -19,8 +19,61 @@ func TestRenderMapOnePointCenteredAndLabeled(t *testing.T) {
 	p := project.New("test")
 	p.Points["1"] = geom.Point{ID: "1", Northing: 100, Easting: 200}
 	got := renderMap(p, newMapState(), 60, 18, 3)
-	if !strings.Contains(got, "*1") {
+	for _, want := range []string{"*1", "labels=id"} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("map missing %q:\n%s", want, got)
+		}
+	}
+}
+
+func TestRenderMapCodeLabelsFallBackToID(t *testing.T) {
+	p := project.New("test")
+	p.Points["1"] = geom.Point{ID: "1", Code: "PEG", Northing: 0, Easting: 0}
+	p.Points["2"] = geom.Point{ID: "2", Northing: 10, Easting: 10}
+	got := renderMap(p, MapState{ShowCodes: true, Zoom: 1}, 60, 18, 3)
+	for _, want := range []string{"*PEG", "*2", "labels=code"} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("map missing %q:\n%s", want, got)
+		}
+	}
+	if strings.Contains(got, "*1") {
+		t.Fatalf("coded point should display its code:\n%s", got)
+	}
+}
+
+func TestMapLabelsUseLeftSideWhenRightSideIsBlocked(t *testing.T) {
+	grid := newRuneGrid(8, 1, ' ')
+	grid[0][7] = '*'
+	if !drawMapLabel(grid, 7, 0, "EDGE") {
+		t.Fatal("expected label to fit to the left")
+	}
+	if got := string(grid[0]); got != "   EDGE*" {
+		t.Fatalf("grid=%q want left-placed label", got)
+	}
+}
+
+func TestMapLabelsDoNotPartiallyRenderOrOverwritePointMarkers(t *testing.T) {
+	grid := newRuneGrid(8, 1, ' ')
+	grid[0][2] = '*'
+	grid[0][5] = '*'
+	if drawMapLabel(grid, 2, 0, "LONG") {
+		t.Fatal("expected blocked label not to render")
+	}
+	if got := string(grid[0]); got != "  *  *  " {
+		t.Fatalf("grid=%q want unchanged markers", got)
+	}
+}
+
+func TestMapPointMarkersArePlacedBeforeLabels(t *testing.T) {
+	p := project.New("test")
+	p.Points["AAA"] = geom.Point{ID: "AAA", Northing: 0, Easting: 0}
+	p.Points["B"] = geom.Point{ID: "B", Northing: 0, Easting: 1}
+	got := renderMap(p, newMapState(), 60, 18, 3)
+	if !strings.Contains(got, "*AAA") && !strings.Contains(got, "AAA*") {
 		t.Fatalf("map missing point label:\n%s", got)
+	}
+	if !strings.Contains(got, "*B") && !strings.Contains(got, "B*") {
+		t.Fatalf("second point marker/label should remain readable:\n%s", got)
 	}
 }
 

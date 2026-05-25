@@ -25,8 +25,8 @@ see [TUTORIAL.md](/Users/sumedho/Documents/repos/lsurvey/TUTORIAL.md).
 - Point and line list panels with filtering and sorting.
 - Command completion hints and command history.
 - Full-screen help with styled sections.
-- Full-screen ASCII map with point labels, optional line overlay, pan, zoom,
-  and fit-to-points.
+- Full-screen ASCII map with ID/code point labels, optional line overlay, pan,
+  zoom, and fit-to-points.
 - HP calculator style angle input: `dd.mmsshhhh`.
 - DMS angle display using degree, minute, second, and hundredth-second symbols.
 - Display precision control for coordinates, distances, and elevations.
@@ -124,6 +124,7 @@ Map keys:
 
 - Arrow keys: pan.
 - `c`: toggle stored contour overlays.
+- `i`: toggle point labels between ID and code; each map entry starts with IDs.
 - `+` or `=`: zoom in.
 - `-`: zoom out.
 - `f`: fit to all points.

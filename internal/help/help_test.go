@@ -7,7 +7,7 @@ import (
 
 func TestRenderIncludesAngleRuleAndCommands(t *testing.T) {
 	got := Render("")
-	for _, want := range []string{"dd.mmsshhhh", "pt add", "rad", "close <p1> <p2> <p3> ...", "bearing add <a> <b>", "dist sub <a> <b>", "shift <base>", "rotate <base>", "scale apply <base>", "transform fit <src1>", "line gen <code>", "export dxf", "export geojson", "filter <text>", "desc <project description>"} {
+	for _, want := range []string{"dd.mmsshhhh", "pt add", "rad", "close <p1> <p2> <p3> ...", "bearing add <a> <b>", "dist sub <a> <b>", "shift <base>", "rotate <base>", "scale apply <base>", "transform fit <src1>", "line gen <code>", "export dxf", "export geojson", "filter <text>", "desc <project description>", "i toggles map point ID/code labels"} {
 		if !strings.Contains(got, want) {
 			t.Fatalf("help missing %q:\n%s", want, got)
 		}

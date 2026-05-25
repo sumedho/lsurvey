@@ -208,6 +208,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			case "c":
 				m.mapState.ShowContours = !m.mapState.ShowContours
 				return m, nil
+			case "i":
+				m.mapState.ShowCodes = !m.mapState.ShowCodes
+				return m, nil
 			case "+", "=":
 				m.mapState.zoomBy(m.project, 1.5)
 				return m, nil
@@ -587,8 +590,15 @@ func (m *Model) toggleMap() {
 		m.mode = ModeMain
 		return
 	}
-	m.mode = ModeMap
+	m.enterMap()
 	m.message = "map"
+}
+
+func (m *Model) enterMap() {
+	if m.mode != ModeMap {
+		m.mapState.ShowCodes = false
+	}
+	m.mode = ModeMap
 }
 
 func (m *Model) handleMapCommand(fields []string) {
@@ -598,19 +608,19 @@ func (m *Model) handleMapCommand(fields []string) {
 	}
 	if len(fields) == 2 && fields[1] == "lines" {
 		m.mapState.ShowLines = !m.mapState.ShowLines
-		m.mode = ModeMap
+		m.enterMap()
 		m.message = "map lines " + onOff(m.mapState.ShowLines)
 		return
 	}
 	if len(fields) == 2 && fields[1] == "contours" {
 		m.mapState.ShowContours = !m.mapState.ShowContours
-		m.mode = ModeMap
+		m.enterMap()
 		m.message = "map contours " + onOff(m.mapState.ShowContours)
 		return
 	}
 	if len(fields) == 2 && fields[1] == "fit" {
 		m.mapState.fit()
-		m.mode = ModeMap
+		m.enterMap()
 		m.message = "map fit"
 		return
 	}
@@ -618,11 +628,11 @@ func (m *Model) handleMapCommand(fields []string) {
 		switch fields[2] {
 		case "in":
 			m.mapState.zoomBy(m.project, 1.5)
-			m.mode = ModeMap
+			m.enterMap()
 			m.message = "map zoom in"
 		case "out":
 			m.mapState.zoomBy(m.project, 1.0/1.5)
-			m.mode = ModeMap
+			m.enterMap()
 			m.message = "map zoom out"
 		default:
 			m.setError("usage: map [lines|contours|fit|zoom in|zoom out]")

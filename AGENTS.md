@@ -132,6 +132,8 @@ id,easting,northing,elevation,code,description
 - `F2` toggles the ASCII map.
 - Map view supports panning with arrows, zoom in/out, fit-to-points, and line
   overlay.
+- Map view starts with point ID labels on each entry; `i` toggles ID/code
+  labels and uncoded points fall back to their IDs.
 - Map view supports an opt-in stored contour overlay, distinguishing minor and
   index contours and reporting stale displayed contour sets.
 - Map rendering should skip off-screen points and clip lines to the viewport.

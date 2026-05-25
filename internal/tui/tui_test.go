@@ -446,6 +446,11 @@ func TestMapLineZoomFitAndEscKeys(t *testing.T) {
 	if !m.mapState.ShowContours {
 		t.Fatal("expected contours on")
 	}
+	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'i'}})
+	m = updated.(Model)
+	if !m.mapState.ShowCodes {
+		t.Fatal("expected code labels on")
+	}
 	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'+'}})
 	m = updated.(Model)
 	if m.mapState.Zoom <= 1 {
@@ -465,6 +470,41 @@ func TestMapLineZoomFitAndEscKeys(t *testing.T) {
 	m = updated.(Model)
 	if m.mode != ModeMain {
 		t.Fatalf("mode=%v want main", m.mode)
+	}
+}
+
+func TestMapEntryResetsLabelsButMapHelpReturnDoesNot(t *testing.T) {
+	m := NewModel(project.New("test"), "")
+	m.ExecuteCommand("map")
+	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'i'}})
+	m = updated.(Model)
+	if !m.mapState.ShowCodes {
+		t.Fatal("expected code labels on")
+	}
+
+	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyF1})
+	m = updated.(Model)
+	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyEsc})
+	m = updated.(Model)
+	if m.mode != ModeMap || !m.mapState.ShowCodes {
+		t.Fatalf("help return should retain map labels: mode=%v state=%+v", m.mode, m.mapState)
+	}
+
+	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyEsc})
+	m = updated.(Model)
+	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyF2})
+	m = updated.(Model)
+	if m.mapState.ShowCodes {
+		t.Fatalf("fresh map entry should default to IDs: %+v", m.mapState)
+	}
+
+	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'i'}})
+	m = updated.(Model)
+	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyEsc})
+	m = updated.(Model)
+	m.ExecuteCommand("map lines")
+	if m.mapState.ShowCodes {
+		t.Fatalf("command-driven map entry should default to IDs: %+v", m.mapState)
 	}
 }
 
@@ -506,7 +546,7 @@ func TestProjectChangesResetMapState(t *testing.T) {
 	}
 
 	m.ExecuteCommand("new next")
-	if m.mapState.Zoom != 1 || m.mapState.Custom || m.mapState.ShowLines || m.mapState.ShowContours {
+	if m.mapState.Zoom != 1 || m.mapState.Custom || m.mapState.ShowLines || m.mapState.ShowContours || m.mapState.ShowCodes {
 		t.Fatalf("new should reset map state: %+v", m.mapState)
 	}
 
@@ -520,7 +560,7 @@ func TestProjectChangesResetMapState(t *testing.T) {
 	if m.path != path+".srv" {
 		t.Fatalf("path=%q want %q", m.path, path+".srv")
 	}
-	if m.mapState.Zoom != 1 || m.mapState.Custom || m.mapState.ShowLines || m.mapState.ShowContours {
+	if m.mapState.Zoom != 1 || m.mapState.Custom || m.mapState.ShowLines || m.mapState.ShowContours || m.mapState.ShowCodes {
 		t.Fatalf("open should reset map state: %+v", m.mapState)
 	}
 }

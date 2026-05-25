@@ -18,6 +18,7 @@ const mapCellHeightRatio = 2.0
 type MapState struct {
 	ShowLines    bool
 	ShowContours bool
+	ShowCodes    bool
 	Zoom         float64
 	CenterE      float64
 	CenterN      float64
@@ -78,7 +79,7 @@ func renderMap(p *project.Project, state MapState, width, height int, precision 
 	points := p.SortedPoints()
 	bounds, ok := pointBounds(points)
 	if !ok {
-		return box("Map", "No points to map\n\nF2/Esc: return  +/-: zoom  f: fit  l: lines  c: contours  F1: help", width, height)
+		return box("Map", "No points to map\n\nF2/Esc: return  i: labels  +/-: zoom  f: fit  l: lines  c: contours  F1: help", width, height)
 	}
 
 	view := visibleBounds(bounds, state, bodyWidth, bodyHeight)
@@ -95,11 +96,18 @@ func renderMap(p *project.Project, state MapState, width, height int, precision 
 			continue
 		}
 		grid[y][x] = '*'
-		drawLabel(grid, x+1, y, pt.ID)
+	}
+	for _, pt := range points {
+		x, y, ok := mapCell(pt.Easting, pt.Northing, view, bodyWidth, bodyHeight)
+		if !ok {
+			continue
+		}
+		drawMapLabel(grid, x, y, mapPointLabel(pt, state))
 	}
 
-	status := fmt.Sprintf("points=%d  bounds E:%s..%s N:%s..%s  zoom=%.2fx  lines=%s",
+	status := fmt.Sprintf("points=%d  labels=%s  bounds E:%s..%s N:%s..%s  zoom=%.2fx  lines=%s",
 		len(points),
+		mapLabelMode(state),
 		formatDecimal(view.MinE, precision),
 		formatDecimal(view.MaxE, precision),
 		formatDecimal(view.MinN, precision),
@@ -111,8 +119,22 @@ func renderMap(p *project.Project, state MapState, width, height int, precision 
 		polylines, stale := contourMapStats(p)
 		status += fmt.Sprintf("  contours=%d  stale=%d", polylines, stale)
 	}
-	body := status + "\n" + strings.Join(gridLines(grid), "\n") + "\n" + "F2/Esc: return  arrows: pan  +/-: zoom  f: fit  l: lines  c: contours  F1: help"
+	body := status + "\n" + strings.Join(gridLines(grid), "\n") + "\n" + "F2/Esc: return  i: labels  arrows: pan  +/-: zoom  f: fit  l: lines  c: contours  F1: help"
 	return box("Map", body, width, height)
+}
+
+func mapPointLabel(pt geom.Point, state MapState) string {
+	if state.ShowCodes && pt.Code != "" {
+		return pt.Code
+	}
+	return pt.ID
+}
+
+func mapLabelMode(state MapState) string {
+	if state.ShowCodes {
+		return "code"
+	}
+	return "id"
 }
 
 func pointBounds(points []geom.Point) (mapBounds, bool) {
@@ -323,19 +345,35 @@ func drawLineGlyph(grid [][]rune, x0, y0, x1, y1 int, glyph rune) {
 	}
 }
 
-func drawLabel(grid [][]rune, x, y int, label string) {
+func drawMapLabel(grid [][]rune, markerX, y int, label string) bool {
 	if y < 0 || y >= len(grid) {
-		return
+		return false
 	}
-	for _, r := range label {
-		if x < 0 || x >= len(grid[y]) {
-			return
+	runes := []rune(label)
+	for _, x := range []int{markerX + 1, markerX - len(runes)} {
+		if !canDrawMapLabel(grid, x, y, runes) {
+			continue
 		}
-		if grid[y][x] == ' ' || isMapOverlayGlyph(grid[y][x]) {
+		for _, r := range runes {
 			grid[y][x] = r
+			x++
+		}
+		return true
+	}
+	return false
+}
+
+func canDrawMapLabel(grid [][]rune, x, y int, label []rune) bool {
+	if len(label) == 0 || x < 0 || x+len(label) > len(grid[y]) {
+		return false
+	}
+	for range label {
+		if grid[y][x] != ' ' && !isMapOverlayGlyph(grid[y][x]) {
+			return false
 		}
 		x++
 	}
+	return true
 }
 
 func isMapOverlayGlyph(r rune) bool {

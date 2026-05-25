@@ -74,7 +74,7 @@ func All() []Command {
 		{Group: "TUI", Name: "filter", Usage: "filter <text>", Description: "Filter the point list by ID, code, or description.", Examples: []string{"filter PEG"}},
 		{Group: "TUI", Name: "clear filter", Usage: "clear filter", Description: "Clear the point list filter.", Examples: []string{"clear filter"}},
 		{Group: "TUI", Name: "sort", Usage: "sort <id|north|east|elev|code|desc> [asc|desc]", Description: "Sort the point list.", Examples: []string{"sort code", "sort north desc"}},
-		{Group: "TUI", Name: "map", Usage: "map [lines|contours|fit|zoom in|zoom out]", Description: "Toggle the full-screen ASCII map, line or contour overlays, zoom, or fit-to-points view.", Examples: []string{"map", "map lines", "map contours", "map fit"}},
+		{Group: "TUI", Name: "map", Usage: "map [lines|contours|fit|zoom in|zoom out]", Description: "Toggle the full-screen ASCII map, where i toggles point ID/code labels.", Examples: []string{"map", "map lines", "map contours", "map fit"}},
 		{Group: "TUI", Name: "help", Usage: "help [command]", Description: "Open full-screen command help.", Examples: []string{"help", "help rad"}},
 		{Group: "TUI", Name: "quit", Usage: "quit", Description: "Exit the application.", Examples: []string{"quit"}},
 	}
@@ -125,7 +125,7 @@ func Render(query string) string {
 		}
 		fmt.Fprintf(&b, "  %-28s %s\n", cmd.Usage, cmd.Description)
 	}
-	b.WriteString("\nKeys: F1 opens help, F2 toggles map, / starts a filter command, Tab accepts a command completion, Ctrl+N/Ctrl+P cycle completions, Up/Down browse command history, arrow keys pan map, +/- zoom map, f fits map, l toggles map lines, c toggles map contours, alt+s cycles sort fields, alt+d toggles direction, Esc closes help/map, Ctrl+C quits.\n")
+	b.WriteString("\nKeys: F1 opens help, F2 toggles map, / starts a filter command, Tab accepts a command completion, Ctrl+N/Ctrl+P cycle completions, Up/Down browse command history, arrow keys pan map, +/- zoom map, f fits map, l toggles map lines, c toggles map contours, i toggles map point ID/code labels, alt+s cycles sort fields, alt+d toggles direction, Esc closes help/map, Ctrl+C quits.\n")
 	return b.String()
 }
 
@@ -159,7 +159,7 @@ func RenderStyled(query string) string {
 		b.WriteByte('\n')
 	}
 	b.WriteByte('\n')
-	b.WriteString(helpKeyStyle.Render("Keys: F1 help  Esc close  Tab complete  Ctrl+N/Ctrl+P completions  Up/Down history  F2 map  arrows pan map  +/- zoom  f fit  l lines  c contours"))
+	b.WriteString(helpKeyStyle.Render("Keys: F1 help  Esc close  Tab complete  Ctrl+N/Ctrl+P completions  Up/Down history  F2 map  arrows pan map  +/- zoom  f fit  l lines  c contours  i point labels"))
 	return b.String()
 }
 
