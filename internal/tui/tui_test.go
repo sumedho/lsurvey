@@ -222,11 +222,32 @@ func TestHelpBrowserFiltersAndOpensSelectedDetail(t *testing.T) {
 }
 
 func TestHelpBrowserRendersLogicalSections(t *testing.T) {
-	browser := newHelpBrowser(120, 120)
+	browser := newHelpBrowser(120, 240)
 	got := browser.View()
 	for _, want := range []string{"Project & Session", "Point Data", "COGO Calculations", "Feature Geometry & Styling", "Import & Export", "Interface"} {
 		if !strings.Contains(got, want) {
 			t.Fatalf("help browser missing section %q:\n%s", want, got)
+		}
+	}
+	lines := strings.Split(got, "\n")
+	separate := false
+	for i := 0; i+1 < len(lines); i++ {
+		if strings.TrimSpace(lines[i]) == "Project & Session" && strings.HasPrefix(strings.TrimSpace(lines[i+1]), "> new <name>") {
+			separate = true
+			break
+		}
+	}
+	if !separate {
+		t.Fatalf("first command should render below its section heading:\n%s", got)
+	}
+}
+
+func TestHelpBrowserFiltersOnlyCommandNames(t *testing.T) {
+	browser := newHelpBrowser(120, 120)
+	for _, item := range browser.Items() {
+		command := item.(helpCommandItem).command
+		if got := item.FilterValue(); got != command.Name {
+			t.Fatalf("filter value for %q=%q want command name only", command.Name, got)
 		}
 	}
 }

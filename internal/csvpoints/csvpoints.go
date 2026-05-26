@@ -64,6 +64,7 @@ func Import(r io.Reader, p *project.Project) (int, error) {
 		if err != nil {
 			return count, fmt.Errorf("row %d: %w", count+2, err)
 		}
+		pt = p.ApplyPointCodeStyle(pt)
 		points[pt.ID] = pt
 		count++
 	}

@@ -10,6 +10,8 @@ import (
 
 func TestImportCSVStrictHeaderAndRows(t *testing.T) {
 	p := project.New("test")
+	p.Groups["MARK"] = project.Group{ID: "MARK", Layer: "MARKS", Color: 1}
+	p.PointCodeStyles["PEG"] = "MARK"
 	input := "id,easting,northing,elevation,code,description\n1,200,100,5.5,PEG,corner\n2,210,110,,TREE,\n"
 	count, err := Import(strings.NewReader(input), p)
 	if err != nil {
@@ -20,6 +22,9 @@ func TestImportCSVStrictHeaderAndRows(t *testing.T) {
 	}
 	if p.Points["1"].Code != "PEG" || p.Points["1"].Elevation == nil || *p.Points["1"].Elevation != 5.5 {
 		t.Fatalf("point 1=%+v", p.Points["1"])
+	}
+	if p.Points["1"].GroupID != "MARK" || p.Points["2"].GroupID != "" {
+		t.Fatalf("default styles not applied selectively: %+v", p.Points)
 	}
 	if p.Points["2"].Elevation != nil {
 		t.Fatalf("point 2 elevation=%v want nil", p.Points["2"].Elevation)

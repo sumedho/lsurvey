@@ -3,9 +3,11 @@ package cogo
 import (
 	"fmt"
 	"math"
+	"sort"
 	"strconv"
 	"strings"
 
+	"lsurvey/internal/boundary"
 	"lsurvey/internal/geom"
 	"lsurvey/internal/project"
 )
@@ -37,6 +39,8 @@ func Execute(p *project.Project, command string) (Result, error) {
 		result, err = execOrderedFeature(p, fields, project.FeaturePolygon)
 	case "group":
 		result, err = execGroup(p, fields)
+	case "code":
+		result, err = execCode(p, fields)
 	case "inverse":
 		result, err = execInverse(p, fields)
 	case "angle":
@@ -103,8 +107,14 @@ func commandChangesProject(fields []string, result Result) bool {
 			return len(result.Created) > 0
 		}
 		return true
-	case "polyline", "polygon", "group":
+	case "polyline":
 		return len(fields) > 1 && fields[1] != "list" && fields[1] != "info"
+	case "polygon":
+		return len(fields) > 1 && fields[1] != "list" && fields[1] != "info" && fields[1] != "report"
+	case "group":
+		return len(fields) > 1 && fields[1] != "list" && fields[1] != "info"
+	case "code":
+		return len(fields) > 2 && fields[2] != "list"
 	case "rad", "rad3d", "midpoint", "offset", "intersect", "resect",
 		"shift", "rotate", "scale", "units":
 		return true
@@ -162,7 +172,7 @@ func execPoint(p *project.Project, f []string) (Result, error) {
 			}
 			groupID = v
 		}
-		p.Points[id] = geom.Point{ID: id, Easting: e, Northing: n, Elevation: z, Code: code, GroupID: groupID}
+		p.Points[id] = p.ApplyPointCodeStyle(geom.Point{ID: id, Easting: e, Northing: n, Elevation: z, Code: code, GroupID: groupID})
 		return Result{Message: "added point " + id, Created: []string{"point:" + id}}, nil
 	case "edit":
 		if len(f) < 4 {
@@ -502,6 +512,11 @@ func execGroup(p *project.Project, f []string) (Result, error) {
 				return Result{}, fmt.Errorf("group %q is used by feature %q", f[2], feature.ID)
 			}
 		}
+		for code, groupID := range p.PointCodeStyles {
+			if groupID == f[2] {
+				return Result{}, fmt.Errorf("group %q is used by point code style %q", f[2], code)
+			}
+		}
 		delete(p.Groups, f[2])
 		return Result{Message: "deleted group " + f[2], Updated: []string{"group:" + f[2]}}, nil
 	case "list":
@@ -517,6 +532,53 @@ func execGroup(p *project.Project, f []string) (Result, error) {
 		return Result{Message: fmt.Sprintf("%s layer=%s color=%d desc=%s", group.ID, group.Layer, group.Color, group.Description)}, nil
 	default:
 		return Result{}, fmt.Errorf("unknown group subcommand %q", f[1])
+	}
+}
+
+func execCode(p *project.Project, f []string) (Result, error) {
+	if len(f) < 2 || f[1] != "style" {
+		return Result{}, fmt.Errorf("usage: code style set <code> group=<id> OR code style del <code> OR code style list")
+	}
+	if len(f) < 3 {
+		return Result{}, fmt.Errorf("usage: code style set <code> group=<id> OR code style del <code> OR code style list")
+	}
+	switch f[2] {
+	case "set":
+		if len(f) != 5 || !strings.HasPrefix(f[4], "group=") || f[3] == "" {
+			return Result{}, fmt.Errorf("usage: code style set <code> group=<id>")
+		}
+		groupID := strings.TrimPrefix(f[4], "group=")
+		if err := requireGroup(p, groupID); err != nil {
+			return Result{}, err
+		}
+		p.PointCodeStyles[f[3]] = groupID
+		return Result{Message: fmt.Sprintf("set point code style %s group=%s", f[3], groupID), Updated: []string{"code:" + f[3]}}, nil
+	case "del":
+		if len(f) != 4 {
+			return Result{}, fmt.Errorf("usage: code style del <code>")
+		}
+		if _, ok := p.PointCodeStyles[f[3]]; !ok {
+			return Result{}, fmt.Errorf("point code style %q not found", f[3])
+		}
+		delete(p.PointCodeStyles, f[3])
+		return Result{Message: "deleted point code style " + f[3], Updated: []string{"code:" + f[3]}}, nil
+	case "list":
+		if len(f) != 3 {
+			return Result{}, fmt.Errorf("usage: code style list")
+		}
+		codes := make([]string, 0, len(p.PointCodeStyles))
+		for code := range p.PointCodeStyles {
+			codes = append(codes, code)
+		}
+		sort.Strings(codes)
+		var b strings.Builder
+		fmt.Fprintf(&b, "%d point code styles", len(codes))
+		for _, code := range codes {
+			fmt.Fprintf(&b, "\n%s group=%s", code, p.PointCodeStyles[code])
+		}
+		return Result{Message: b.String()}, nil
+	default:
+		return Result{}, fmt.Errorf("usage: code style set <code> group=<id> OR code style del <code> OR code style list")
 	}
 }
 
@@ -616,9 +678,46 @@ func execOrderedFeature(p *project.Project, f []string, kind string) (Result, er
 			return Result{}, fmt.Errorf("%s %q not found", name, f[2])
 		}
 		return Result{Message: fmt.Sprintf("%s points=%s code=%s group=%s", feature.ID, strings.Join(feature.PointIDs, ","), feature.Code, feature.GroupID)}, nil
+	case "report":
+		if kind != project.FeaturePolygon || len(f) != 3 {
+			return Result{}, fmt.Errorf("usage: polygon report <id|all>")
+		}
+		return polygonReport(p, f[2])
 	default:
 		return Result{}, fmt.Errorf("unknown %s subcommand %q", name, f[1])
 	}
+}
+
+func polygonReport(p *project.Project, selection string) (Result, error) {
+	var schedules []boundary.Schedule
+	if selection == "all" {
+		schedules = boundary.All(p)
+	} else {
+		schedule, err := boundary.ForPolygon(p, selection)
+		if err != nil {
+			return Result{}, err
+		}
+		schedules = []boundary.Schedule{schedule}
+	}
+	if len(schedules) == 0 {
+		return Result{Message: "0 polygons"}, nil
+	}
+	var b strings.Builder
+	precision := p.DisplayPrecision()
+	for index, schedule := range schedules {
+		if index > 0 {
+			b.WriteByte('\n')
+		}
+		fmt.Fprintf(&b, "%s code=%s desc=%s area=%s %s^2 perimeter=%s %s",
+			schedule.Feature.ID, schedule.Feature.Code, schedule.Feature.Description,
+			formatDistance(schedule.Area, precision), p.Units["distance"],
+			formatDistance(schedule.Perimeter, precision), p.Units["distance"])
+		for _, leg := range schedule.Legs {
+			fmt.Fprintf(&b, "\nleg=%d from=%s to=%s bearing=%s distance=%s",
+				leg.Number, leg.From, leg.To, leg.Bearing.FormatDMS(2), formatDistance(leg.Distance, precision))
+		}
+	}
+	return Result{Message: b.String()}, nil
 }
 
 func applyFeatureFields(p *project.Project, feature *project.Feature, fields []string, allowTerrain bool) error {
@@ -1586,7 +1685,7 @@ func storeCreatedPoint(p *project.Project, pt geom.Point) error {
 	if _, exists := p.Points[pt.ID]; exists {
 		return fmt.Errorf("point %q already exists", pt.ID)
 	}
-	p.Points[pt.ID] = pt
+	p.Points[pt.ID] = p.ApplyPointCodeStyle(pt)
 	return nil
 }
 

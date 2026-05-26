@@ -34,6 +34,7 @@ type importState struct {
 	points   map[string]geom.Point
 	features map[string]project.Feature
 	groups   map[string]project.Group
+	styles   map[string]string
 }
 
 func ImportFile(path string, p *project.Project) (int, int, error) {
@@ -65,7 +66,7 @@ func Import(r io.Reader, p *project.Project) (int, int, error) {
 	if fc.Type != "FeatureCollection" {
 		return 0, 0, fmt.Errorf("unsupported GeoJSON type %q", fc.Type)
 	}
-	state := importState{clonePoints(p.Points), cloneFeatures(p.Features), cloneGroups(p.Groups)}
+	state := importState{clonePoints(p.Points), cloneFeatures(p.Features), cloneGroups(p.Groups), cloneMappings(p.PointCodeStyles)}
 	points, features := 0, 0
 	for _, pass := range []string{"Point", "geometry"} {
 		for i, feat := range fc.Features {
@@ -149,6 +150,7 @@ func importFeature(state *importState, feat feature) (int, int, error) {
 		}
 		pt := makePoint(id, coord)
 		pt.Code, pt.Description, pt.GroupID = propertyString(feat.Properties, "code"), propertyString(feat.Properties, "description", "desc"), groupID
+		pt = applyCodeStyle(state, pt)
 		if existing, ok := state.points[id]; ok && !pointsEqual(existing, pt) {
 			return 0, 0, fmt.Errorf("point %q already exists", id)
 		}
@@ -403,6 +405,25 @@ func cloneGroups(src map[string]project.Group) map[string]project.Group {
 		dst[id] = group
 	}
 	return dst
+}
+
+func cloneMappings(src map[string]string) map[string]string {
+	dst := make(map[string]string, len(src))
+	for code, groupID := range src {
+		dst[code] = groupID
+	}
+	return dst
+}
+
+func applyCodeStyle(state *importState, pt geom.Point) geom.Point {
+	if pt.GroupID == "" {
+		if groupID, ok := state.styles[pt.Code]; ok {
+			if _, exists := state.groups[groupID]; exists {
+				pt.GroupID = groupID
+			}
+		}
+	}
+	return pt
 }
 
 func nextPointID(points map[string]geom.Point) string {

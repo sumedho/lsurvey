@@ -60,11 +60,14 @@ func TestExportGeoJSONPreservesMixedElevationVertices(t *testing.T) {
 
 func TestImportGeoJSONPointsAndProperties(t *testing.T) {
 	p := project.New("test")
+	p.Groups["MARK"] = project.Group{ID: "MARK", Layer: "MARKS", Color: 1}
+	p.Groups["INPUT"] = project.Group{ID: "INPUT", Layer: "INPUT", Color: 2}
+	p.PointCodeStyles["PEG"] = "MARK"
 	input := `{
   "type":"FeatureCollection",
   "features":[
     {"type":"Feature","geometry":{"type":"Point","coordinates":[200,100,5.5]},"properties":{"id":"1","code":"PEG","description":"corner"}},
-    {"type":"Feature","geometry":{"type":"Point","coordinates":[210,110]},"properties":{"id":"2","code":"TREE","desc":"plant"}}
+    {"type":"Feature","geometry":{"type":"Point","coordinates":[210,110]},"properties":{"id":"2","code":"PEG","desc":"plant","group":"INPUT","layer":"INPUT","color":2}}
   ]
 }`
 	points, lines, err := Import(strings.NewReader(input), p)
@@ -82,6 +85,9 @@ func TestImportGeoJSONPointsAndProperties(t *testing.T) {
 	}
 	if p.Points["2"].Description != "plant" {
 		t.Fatalf("description=%q want plant", p.Points["2"].Description)
+	}
+	if p.Points["1"].GroupID != "MARK" || p.Points["2"].GroupID != "INPUT" {
+		t.Fatalf("style defaults/override=%+v", p.Points)
 	}
 }
 

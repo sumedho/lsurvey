@@ -21,6 +21,8 @@ so another UI, such as a web frontend, can be added later.
 - `internal/csvpoints`: point CSV import/export.
 - `internal/dxf`: ASCII DXF export.
 - `internal/landxml`: LandXML geometry export.
+- `internal/boundary`: polygon area/boundary schedules and CSV export.
+- `internal/codelib`: reusable point-code style library import/export.
 - `internal/paths`: extension handling for `.srv`, `.dxf`, and `.csv`.
 - `internal/terrain`: TIN construction, breakline insertion, contour slicing,
   and contour polyline joining.
@@ -73,6 +75,11 @@ id,easting,northing,elevation,code,description
 - Style groups are flat records with unique case-insensitive DXF layer names
   and ACI colors from 1 through 255; each point or user feature may belong to
   at most one group.
+- Point-code style defaults map exact point codes to style groups, apply only
+  to newly created/imported points without explicit groups, and persist in
+  `.srv`; reusable `.codes.json` library imports must be atomic on conflicts.
+- `polygon report <id|all>` reports stored-polygon area, perimeter, and
+  ordered boundary legs; `export boundarycsv` writes schedule rows.
 - `offset` must work from either two point IDs or one stored line ID.
 - `resect` takes three known points and bearings observed from the unknown point
   to those points, then stores the best-fit point from the reverse bearing lines.
@@ -126,6 +133,8 @@ id,easting,northing,elevation,code,description
   or colliding labels.
 - DXF export must apply a feature or point group's layer and ACI color while
   retaining the fixed contour layers and styles.
+- DXF export must place one derived area label inside every stored polygon,
+  using its group label layer/color where assigned.
 - LandXML export writes points and line/polyline/polygon plan-feature geometry;
   it does not currently write contours or surfaces.
 - Keep contour geometry tests in `internal/terrain`; keep command behavior tests

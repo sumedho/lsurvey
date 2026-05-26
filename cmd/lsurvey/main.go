@@ -21,7 +21,7 @@ func main() {
 
 func run(args []string) error {
 	if len(args) >= 4 && args[0] == "export" {
-		return app.ExportProject(args[1], args[2], args[3])
+		return app.ExportProject(args[1], args[2], args[3], args[4:]...)
 	}
 
 	path := ""

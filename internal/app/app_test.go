@@ -86,6 +86,46 @@ func TestSessionRoutesImportAndExport(t *testing.T) {
 	}
 }
 
+func TestSessionRoutesBoundarySchedulesAndCodeLibraries(t *testing.T) {
+	dir := t.TempDir()
+	source := NewSession(project.New("source"), "", "v1")
+	for _, command := range []string{
+		"group add PEGS layer=PEG_MARKS color=1",
+		"code style set PEG group=PEGS",
+		"pt add 1 0 0 PEG", "pt add 2 10 0", "pt add 3 0 10",
+		"polygon add LOT1 1 2 3",
+	} {
+		if _, err := source.Execute(command); err != nil {
+			t.Fatal(err)
+		}
+	}
+	schedulePath := filepath.Join(dir, "boundaries")
+	if outcome, err := source.Execute("export boundarycsv " + schedulePath + " polygon=LOT1"); err != nil || !strings.Contains(outcome.Message, ".csv") {
+		t.Fatalf("boundary outcome=%+v err=%v", outcome, err)
+	}
+	if _, err := os.Stat(schedulePath + ".csv"); err != nil {
+		t.Fatal(err)
+	}
+	libraryPath := filepath.Join(dir, "survey")
+	if _, err := source.Execute("export codes " + libraryPath); err != nil {
+		t.Fatal(err)
+	}
+	dest := NewSession(project.New("dest"), "", "v1")
+	outcome, err := dest.Execute("import codes " + libraryPath)
+	if err != nil || !outcome.ProjectChanged || dest.Project.PointCodeStyles["PEG"] != "PEGS" {
+		t.Fatalf("codes outcome=%+v project=%+v err=%v", outcome, dest.Project, err)
+	}
+	if _, err := dest.Execute("undo"); err != nil || len(dest.Project.PointCodeStyles) != 0 {
+		t.Fatalf("library import should be undoable: styles=%+v err=%v", dest.Project.PointCodeStyles, err)
+	}
+	if _, err := dest.Execute("redo"); err != nil || dest.Project.PointCodeStyles["PEG"] != "PEGS" {
+		t.Fatalf("library import should be redoable: styles=%+v err=%v", dest.Project.PointCodeStyles, err)
+	}
+	if _, err := dest.Execute("pt add 1 0 0 PEG"); err != nil || dest.Project.Points["1"].GroupID != "PEGS" {
+		t.Fatalf("imported defaults not applied: %+v err=%v", dest.Project.Points["1"], err)
+	}
+}
+
 func TestSessionFailedCommandDoesNotRecordHistory(t *testing.T) {
 	s := NewSession(project.New("test"), "", "v1")
 	if _, err := s.Execute("inverse missing other"); err == nil {

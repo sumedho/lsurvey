@@ -59,6 +59,10 @@ func commandSuggestions(p *project.Project) []string {
 	lineCodes := map[string]bool{}
 	for _, feature := range lines {
 		add(feature.Kind + " del " + feature.ID)
+		if feature.Kind == project.FeaturePolygon {
+			add("polygon report " + feature.ID)
+			add("export boundarycsv <file> polygon=" + feature.ID)
+		}
 		if feature.Kind == project.FeatureLine {
 			add("offset " + feature.ID + " <offset> <chainage> as " + nextPointID + " [code]")
 		}
@@ -71,6 +75,10 @@ func commandSuggestions(p *project.Project) []string {
 			add("contour gen C1 1 boundary=codes:" + feature.Code + " maxedge=<distance> smooth=1")
 			lineCodes[feature.Code] = true
 		}
+	}
+
+	for _, group := range p.SortedGroups() {
+		add("code style set <code> group=" + group.ID)
 	}
 
 	for _, set := range p.SortedContourSets() {

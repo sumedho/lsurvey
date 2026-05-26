@@ -23,6 +23,7 @@ func TestProjectJSONRoundTripPreservesPointCode(t *testing.T) {
 	}
 	z := 42.5
 	p.Groups["BOUND"] = Group{ID: "BOUND", Layer: "BOUNDARIES", Color: 1}
+	p.PointCodeStyles["PEG"] = "BOUND"
 	p.Points["1"] = geom.Point{ID: "1", Northing: 100, Easting: 200, Elevation: &z, Code: "PEG", GroupID: "BOUND"}
 	p.Features["L1"] = Feature{ID: "L1", Kind: FeatureLine, PointIDs: []string{"1", "1"}, Code: "BOUNDARY", TerrainRole: "ridge", GroupID: "BOUND"}
 	p.ContourSets["C1"] = ContourSet{
@@ -80,6 +81,9 @@ func TestProjectJSONRoundTripPreservesPointCode(t *testing.T) {
 	if got.Groups["BOUND"].Layer != "BOUNDARIES" || got.Points["1"].GroupID != "BOUND" || got.Features["L1"].GroupID != "BOUND" {
 		t.Fatalf("group styling not preserved: groups=%+v point=%+v feature=%+v", got.Groups, got.Points["1"], got.Features["L1"])
 	}
+	if got.PointCodeStyles["PEG"] != "BOUND" {
+		t.Fatalf("point code styles=%+v", got.PointCodeStyles)
+	}
 	if len(got.History) != 2 {
 		t.Fatalf("history length=%d want 2", len(got.History))
 	}
@@ -126,6 +130,9 @@ func TestLoadMigratesSchemaOneProject(t *testing.T) {
 	}
 	if got.GridGround != nil {
 		t.Fatalf("old project should have no conversion metadata: %+v", got.GridGround)
+	}
+	if got.PointCodeStyles == nil {
+		t.Fatal("old project should initialize point code styles")
 	}
 }
 

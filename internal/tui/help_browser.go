@@ -25,13 +25,13 @@ func (item helpCommandItem) Description() string {
 }
 
 func (item helpCommandItem) FilterValue() string {
-	return commandhelp.SearchText(item.command)
+	return item.command.Name
 }
 
 type helpCommandDelegate struct{}
 
 func (helpCommandDelegate) Height() int {
-	return 1
+	return 2
 }
 
 func (helpCommandDelegate) Spacing() int {
@@ -50,9 +50,9 @@ func (helpCommandDelegate) Render(w io.Writer, m list.Model, index int, raw list
 
 	items := m.VisibleItems()
 	pageStart := m.Paginator.Page * m.Paginator.PerPage
-	section := ""
+	section := "  "
 	if index == pageStart || index == 0 || previousGroup(items, index) != item.command.Group {
-		section = helpGroupStyle.Render(item.command.Group + "  ")
+		section += helpGroupStyle.Render(item.command.Group)
 	}
 
 	prefix := "  "
@@ -63,7 +63,7 @@ func (helpCommandDelegate) Render(w io.Writer, m list.Model, index int, raw list
 		usageStyle = helpSelectedUsageStyle
 		descriptionStyle = helpSelectedDescriptionStyle
 	}
-	fmt.Fprintf(w, "%s%s%s  %s", prefix, section, usageStyle.Render(item.command.Usage), descriptionStyle.Render(item.command.Description))
+	fmt.Fprintf(w, "%s\n%s%s  %s", section, prefix, usageStyle.Render(item.command.Usage), descriptionStyle.Render(item.command.Description))
 }
 
 func previousGroup(items []list.Item, index int) string {

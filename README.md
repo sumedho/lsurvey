@@ -22,6 +22,8 @@ see [TUTORIAL.md](/Users/sumedho/Documents/repos/lsurvey/TUTORIAL.md).
 - Project description stored with the project and shown in the top info area.
 - Coded 2D and 3D points.
 - Stored lines, polylines, and polygons with code, description, and style-group fields.
+- Polygon area/boundary schedules and DXF area labels.
+- Reusable point-code style libraries for default point layer/color assignment.
 - Point and line list panels with filtering and sorting.
 - Command completion hints and command history.
 - Full-screen help with styled sections.
@@ -209,9 +211,13 @@ ID.
 
 ```text
 group add <id> layer=<name> color=<1..255> [desc=<text>]
+code style set <code> group=<id>
+code style del <code>
+code style list
 line add <id> <p1> <p2> [code] [group=<id>] [terrain=standard|ridge|drain]
 polyline add <id> <p1> <p2> [<pN> ...] [code=<code>] [group=<id>] [terrain=standard|ridge|drain]
 polygon add <id> <p1> <p2> <p3> [<pN> ...] [code=<code>] [group=<id>]
+polygon report <id|all>
 line edit <id> [from=] [to=] [code=] [desc=] [group=<id>|none] [terrain=none|standard|ridge|drain]
 line del <id>
 line list
@@ -222,7 +228,9 @@ Examples:
 ```text
 line add L1 1 2 BOUNDARY
 group add LOT layer=BOUNDARIES color=1
+code style set PEG group=LOT
 polygon add P1 1 2 3 4 code=LOT group=LOT
+polygon report P1
 line edit L1 from=2 to=3 code=EASE desc="access easement"
 line del L1
 line list
@@ -230,6 +238,9 @@ line list
 
 Feature IDs must be unique. Lines and polylines may be terrain breaklines;
 polygons are implicitly closed area features and are used for clipping rings.
+`polygon report` provides area, perimeter, and ordered boundary bearings and
+distances. Point-code styles assign a group's layer and color to newly created
+or imported coded points only when they do not already have an explicit group.
 
 ## Calculation Commands
 
@@ -443,6 +454,9 @@ import geojson <file>
 export geojson <file>
 export dxf <file>
 export landxml <file>
+export boundarycsv <file> [polygon=<id>]
+import codes <file>
+export codes <file>
 ```
 
 Examples:
@@ -454,6 +468,9 @@ import geojson survey
 export geojson survey
 export dxf job
 export landxml job
+export boundarycsv boundary_schedule polygon=P1
+export codes field_codes
+import codes field_codes
 ```
 
 CSV import is atomic. If any row is invalid, no imported points are applied to
@@ -480,6 +497,7 @@ DXF export writes:
 - Point markers.
 - Point labels.
 - Stored lines, polylines, and polygons; grouped geometry uses its defined DXF layer and ACI color.
+- One area label inside each stored polygon on `AREA_LABELS` or its group-derived label layer.
 - Stored contour polylines on `CONTOURS` and `CONTOURS_INDEX` layers.
 - Contour elevation labels on `CONTOUR_LABELS` and `CONTOUR_LABELS_INDEX`
   layers, placed along readable contour paths and suppressed where insufficient
@@ -491,6 +509,17 @@ index 1, a heavier DXF lineweight, and a wider polyline width.
 LandXML export currently requires `distance=m` and writes COGO points plus
 line, polyline, and closed polygon plan-feature geometry. It does not export
 contours or surfaces.
+
+Boundary schedule CSV export writes polygon summary values and one ordered leg
+row per polygon using this header:
+
+```text
+polygon_id,polygon_code,polygon_description,area,perimeter,leg,from,to,bearing,distance
+```
+
+Code-library imports and exports use `.codes.json` files containing reusable
+style groups and point-code style defaults. Imports reject conflicting
+definitions atomically.
 
 ## Angle Input
 

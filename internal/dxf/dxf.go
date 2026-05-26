@@ -8,6 +8,7 @@ import (
 	"strconv"
 	"strings"
 
+	"lsurvey/internal/boundary"
 	"lsurvey/internal/geom"
 	"lsurvey/internal/project"
 )
@@ -127,6 +128,18 @@ func Write(w io.Writer, p *project.Project) error {
 				bw.pair(20, pt.Northing)
 			}
 		}
+		if feature.Kind == project.FeaturePolygon {
+			if schedule, ok := boundary.ForFeature(p, feature); ok {
+				point := boundary.LabelPoint(p, feature)
+				labelLayer, labelColor := styleFor(p, "AREA_LABELS", "", feature.GroupID, lineLabelColor)
+				unit := p.Units["distance"]
+				if unit == "" {
+					unit = "m"
+				}
+				value := fmt.Sprintf("%s AREA=%s %s^2", feature.ID, strconv.FormatFloat(schedule.Area, 'f', p.DisplayPrecision(), 64), unit)
+				bw.centeredMText(labelLayer, labelColor, textLabel{Easting: point.Easting, Northing: point.Northing, Height: lineLabelHeight, Value: value})
+			}
+		}
 	}
 
 	var acceptedLabels []contourLabelPlacement
@@ -183,6 +196,7 @@ func writeLayerTable(w *writer, p *project.Project) {
 		{name: "CONTOUR_LABELS", color: minorContourColor, lineWeight: minorContourWeight},
 		{name: "CONTOUR_LABELS_INDEX", color: indexContourColor, lineWeight: indexContourWeight},
 		{name: "LINE_LABELS", color: lineLabelColor, lineWeight: 0},
+		{name: "AREA_LABELS", color: lineLabelColor, lineWeight: 0},
 	}
 	seen := map[string]bool{}
 	for _, def := range layers {
@@ -208,6 +222,10 @@ func writeLayerTable(w *writer, p *project.Project) {
 				name, color = styleFor(p, "LINE_LABELS", "", feature.GroupID, lineLabelColor)
 				add(name, color)
 			}
+		}
+		if feature.Kind == project.FeaturePolygon {
+			name, color = styleFor(p, "AREA_LABELS", "", feature.GroupID, lineLabelColor)
+			add(name, color)
 		}
 	}
 
@@ -310,7 +328,7 @@ func layer(prefix, code string) string {
 func styleFor(p *project.Project, prefix, code, groupID string, fallbackColor int) (string, int) {
 	if group, ok := p.Groups[groupID]; ok {
 		groupLayer := cleanLayerName(group.Layer)
-		if prefix == "LABELS" || prefix == "LINE_LABELS" {
+		if prefix == "LABELS" || prefix == "LINE_LABELS" || prefix == "AREA_LABELS" {
 			return groupLayer + "_LABELS", group.Color
 		}
 		return groupLayer, group.Color

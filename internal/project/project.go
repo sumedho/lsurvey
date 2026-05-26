@@ -11,7 +11,7 @@ import (
 	"lsurvey/internal/geom"
 )
 
-const CurrentSchemaVersion = 6
+const CurrentSchemaVersion = 7
 
 // Line is retained only for decoding project files written before feature geometry.
 type Line struct {
@@ -135,20 +135,21 @@ type GridGroundConversion struct {
 }
 
 type Project struct {
-	SchemaVersion int                   `json:"schema_version"`
-	AppVersion    string                `json:"app_version,omitempty"`
-	Name          string                `json:"name"`
-	Description   string                `json:"description,omitempty"`
-	Display       DisplaySettings       `json:"display"`
-	Units         map[string]string     `json:"units"`
-	Points        map[string]geom.Point `json:"points"`
-	Groups        map[string]Group      `json:"groups,omitempty"`
-	Features      map[string]Feature    `json:"features,omitempty"`
-	LegacyLines   map[string]Line       `json:"lines,omitempty"`
-	ContourSets   map[string]ContourSet `json:"contour_sets,omitempty"`
-	Traverse      *TraverseState        `json:"traverse,omitempty"`
-	GridGround    *GridGroundConversion `json:"grid_ground,omitempty"`
-	History       []HistoryRecord       `json:"history"`
+	SchemaVersion   int                   `json:"schema_version"`
+	AppVersion      string                `json:"app_version,omitempty"`
+	Name            string                `json:"name"`
+	Description     string                `json:"description,omitempty"`
+	Display         DisplaySettings       `json:"display"`
+	Units           map[string]string     `json:"units"`
+	Points          map[string]geom.Point `json:"points"`
+	Groups          map[string]Group      `json:"groups,omitempty"`
+	PointCodeStyles map[string]string     `json:"point_code_styles,omitempty"`
+	Features        map[string]Feature    `json:"features,omitempty"`
+	LegacyLines     map[string]Line       `json:"lines,omitempty"`
+	ContourSets     map[string]ContourSet `json:"contour_sets,omitempty"`
+	Traverse        *TraverseState        `json:"traverse,omitempty"`
+	GridGround      *GridGroundConversion `json:"grid_ground,omitempty"`
+	History         []HistoryRecord       `json:"history"`
 }
 
 func New(name string) *Project {
@@ -160,11 +161,12 @@ func New(name string) *Project {
 			"angle":    "dd.mmss",
 			"distance": "m",
 		},
-		Points:      map[string]geom.Point{},
-		Groups:      map[string]Group{},
-		Features:    map[string]Feature{},
-		ContourSets: map[string]ContourSet{},
-		History:     []HistoryRecord{},
+		Points:          map[string]geom.Point{},
+		Groups:          map[string]Group{},
+		PointCodeStyles: map[string]string{},
+		Features:        map[string]Feature{},
+		ContourSets:     map[string]ContourSet{},
+		History:         []HistoryRecord{},
 	}
 }
 
@@ -312,6 +314,18 @@ func (p *Project) SortedGroups() []Group {
 	return groups
 }
 
+func (p *Project) ApplyPointCodeStyle(pt geom.Point) geom.Point {
+	if pt.GroupID != "" || pt.Code == "" {
+		return pt
+	}
+	if groupID, ok := p.PointCodeStyles[pt.Code]; ok {
+		if _, exists := p.Groups[groupID]; exists {
+			pt.GroupID = groupID
+		}
+	}
+	return pt
+}
+
 func (p *Project) FeatureSegments(feature Feature) []FeatureSegment {
 	if len(feature.PointIDs) < 2 {
 		return nil
@@ -341,6 +355,9 @@ func (p *Project) ensure() {
 	}
 	if p.Groups == nil {
 		p.Groups = map[string]Group{}
+	}
+	if p.PointCodeStyles == nil {
+		p.PointCodeStyles = map[string]string{}
 	}
 	if p.Features == nil {
 		p.Features = map[string]Feature{}

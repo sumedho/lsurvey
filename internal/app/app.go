@@ -8,6 +8,8 @@ import (
 	"strconv"
 	"strings"
 
+	"lsurvey/internal/boundary"
+	"lsurvey/internal/codelib"
 	"lsurvey/internal/cogo"
 	"lsurvey/internal/csvpoints"
 	"lsurvey/internal/dxf"
@@ -121,10 +123,10 @@ func (s *Session) Execute(command string) (Outcome, error) {
 		s.Dirty = false
 		outcome.Message = "saved " + s.Path
 	case "export":
-		if len(fields) != 3 {
-			return Outcome{}, fmt.Errorf("usage: export dxf|csv|geojson|landxml <file>")
+		if len(fields) < 3 {
+			return Outcome{}, fmt.Errorf("usage: export dxf|csv|geojson|landxml|boundarycsv|codes <file> [polygon=<id>]")
 		}
-		path, err := Export(s.Project, fields[1], fields[2])
+		path, err := Export(s.Project, fields[1], fields[2], fields[3:]...)
 		if err != nil {
 			return Outcome{}, err
 		}
@@ -152,7 +154,7 @@ func (s *Session) Execute(command string) (Outcome, error) {
 		outcome.Message = s.projectInfo()
 	case "import":
 		if len(fields) != 3 {
-			return Outcome{}, fmt.Errorf("usage: import csv|geojson <file>")
+			return Outcome{}, fmt.Errorf("usage: import csv|geojson|codes <file>")
 		}
 		before, err := cloneProject(s.Project)
 		if err != nil {
@@ -173,8 +175,15 @@ func (s *Session) Execute(command string) (Outcome, error) {
 				return Outcome{}, err
 			}
 			outcome.Message = fmt.Sprintf("imported %d points and %d features from %s", points, lines, path)
+		case "codes":
+			path := paths.Codes(fields[2])
+			groups, mappings, err := codelib.ImportFile(path, s.Project)
+			if err != nil {
+				return Outcome{}, err
+			}
+			outcome.Message = fmt.Sprintf("imported %d groups and %d point code styles from %s", groups, mappings, path)
 		default:
-			return Outcome{}, fmt.Errorf("usage: import csv|geojson <file>")
+			return Outcome{}, fmt.Errorf("usage: import csv|geojson|codes <file>")
 		}
 		if err := s.commitMutation(before, command, outcome.Message, nil, nil); err != nil {
 			return Outcome{}, err
@@ -388,9 +397,12 @@ func (s *Session) projectInfo() string {
 	return message
 }
 
-func Export(p *project.Project, format, path string) (string, error) {
+func Export(p *project.Project, format, path string, options ...string) (string, error) {
 	switch format {
 	case "dxf":
+		if len(options) != 0 {
+			return "", fmt.Errorf("usage: export dxf <file>")
+		}
 		path = paths.DXF(path)
 		f, err := os.Create(path)
 		if err != nil {
@@ -402,25 +414,53 @@ func Export(p *project.Project, format, path string) (string, error) {
 		}
 		return path, err
 	case "csv":
+		if len(options) != 0 {
+			return "", fmt.Errorf("usage: export csv <file>")
+		}
 		path = paths.CSV(path)
 		return path, csvpoints.ExportFile(path, p)
 	case "geojson":
+		if len(options) != 0 {
+			return "", fmt.Errorf("usage: export geojson <file>")
+		}
 		path = paths.GeoJSON(path)
 		return path, geojson.ExportFile(path, p)
 	case "landxml":
+		if len(options) != 0 {
+			return "", fmt.Errorf("usage: export landxml <file>")
+		}
 		path = paths.LandXML(path)
 		return path, landxml.ExportFile(path, p)
+	case "boundarycsv":
+		polygonID := ""
+		if len(options) > 1 || len(options) == 1 && !strings.HasPrefix(options[0], "polygon=") {
+			return "", fmt.Errorf("usage: export boundarycsv <file> [polygon=<id>]")
+		}
+		if len(options) == 1 {
+			polygonID = strings.TrimPrefix(options[0], "polygon=")
+			if polygonID == "" {
+				return "", fmt.Errorf("polygon ID cannot be empty")
+			}
+		}
+		path = paths.CSV(path)
+		return path, boundary.ExportFile(path, p, polygonID)
+	case "codes":
+		if len(options) != 0 {
+			return "", fmt.Errorf("usage: export codes <file>")
+		}
+		path = paths.Codes(path)
+		return path, codelib.ExportFile(path, p)
 	default:
-		return "", fmt.Errorf("usage: export dxf|csv|geojson|landxml <file>")
+		return "", fmt.Errorf("usage: export dxf|csv|geojson|landxml|boundarycsv|codes <file> [polygon=<id>]")
 	}
 }
 
-func ExportProject(format, projectPath, outputPath string) error {
+func ExportProject(format, projectPath, outputPath string, options ...string) error {
 	p, err := project.Load(projectPath)
 	if err != nil {
 		return err
 	}
-	_, err = Export(p, format, outputPath)
+	_, err = Export(p, format, outputPath, options...)
 	return err
 }
 

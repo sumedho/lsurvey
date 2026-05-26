@@ -1050,6 +1050,56 @@ func TestGroupPolylineAndPolygonCommandsStoreStyledFeatures(t *testing.T) {
 	}
 }
 
+func TestPolygonReportIncludesAreaPerimeterAndLegsWithoutMutation(t *testing.T) {
+	p := project.New("test")
+	for _, command := range []string{
+		"pt add 1 0 0", "pt add 2 4 0", "pt add 3 4 3",
+		"polygon add LOT1 1 2 3 code=LOT desc=parcel",
+	} {
+		mustExec(t, p, command)
+	}
+	got, err := Execute(p, "polygon report LOT1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{"LOT1", "area=6.000", "perimeter=12.000", "leg=1", "from=1", "to=2", "bearing=90°00′00.00″"} {
+		if !strings.Contains(got.Message, want) {
+			t.Fatalf("report=%q missing %q", got.Message, want)
+		}
+	}
+	if got.Changed {
+		t.Fatalf("polygon report should be read-only: %+v", got)
+	}
+}
+
+func TestPointCodeStyleDefaultsApplyOnlyToUngroupedNewPoints(t *testing.T) {
+	p := project.New("test")
+	for _, command := range []string{
+		"group add PEGS layer=PEG_MARKS color=1",
+		"group add OTHER layer=OTHER_MARKS color=2",
+		"code style set PEG group=PEGS",
+		"pt add 1 0 0 PEG",
+		"pt add 2 10 0 PEG group=OTHER",
+		"rad 1 90.0000 5 as 3 PEG",
+	} {
+		mustExec(t, p, command)
+	}
+	if p.Points["1"].GroupID != "PEGS" || p.Points["2"].GroupID != "OTHER" || p.Points["3"].GroupID != "PEGS" {
+		t.Fatalf("styled points=%+v", p.Points)
+	}
+	list, err := Execute(p, "code style list")
+	if err != nil || list.Changed || !strings.Contains(list.Message, "PEG group=PEGS") {
+		t.Fatalf("style list=%+v err=%v", list, err)
+	}
+	if _, err := Execute(p, "group del PEGS"); err == nil {
+		t.Fatal("group referenced by point code style should not be deletable")
+	}
+	mustExec(t, p, "code style del PEG")
+	if p.Points["1"].GroupID != "PEGS" {
+		t.Fatal("removing a default must not restyle existing points")
+	}
+}
+
 func TestPolygonRejectsSelfIntersectionAndTerrainRole(t *testing.T) {
 	p := project.New("test")
 	for _, command := range []string{"pt add 1 0 0", "pt add 2 10 10", "pt add 3 0 10", "pt add 4 10 0"} {

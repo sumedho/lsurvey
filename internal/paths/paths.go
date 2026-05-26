@@ -7,6 +7,7 @@ const DXFExt = ".dxf"
 const CSVExt = ".csv"
 const GeoJSONExt = ".geojson"
 const LandXMLExt = ".xml"
+const CodesExt = ".codes.json"
 
 func Project(path string) string {
 	return ensureExt(path, ProjectExt)
@@ -26,6 +27,10 @@ func GeoJSON(path string) string {
 
 func LandXML(path string) string {
 	return ensureExt(path, LandXMLExt)
+}
+
+func Codes(path string) string {
+	return ensureExt(path, CodesExt)
 }
 
 func ensureExt(path, ext string) string {

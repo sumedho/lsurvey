@@ -168,6 +168,9 @@ func TestWriteUsesGroupStyleForPolylineAndPolygon(t *testing.T) {
 	if !strings.Contains(got, "2\nLOT_BOUNDARY\n") || strings.Count(got, "8\nLOT_BOUNDARY\n62\n1\n") != 2 || !strings.Contains(got, "70\n1\n") {
 		t.Fatalf("styled feature layers missing:\n%s", got)
 	}
+	if !strings.Contains(got, "8\nLOT_BOUNDARY_LABELS\n62\n1\n") || !strings.Contains(got, "A1 AREA=50.000 m^2") {
+		t.Fatalf("styled polygon area label missing:\n%s", got)
+	}
 }
 
 func TestWritePreservesElevatedPolylineVerticesAs3DPolyline(t *testing.T) {

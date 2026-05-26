@@ -65,3 +65,11 @@ func TestLandXMLAppendsXML(t *testing.T) {
 		}
 	}
 }
+
+func TestCodesAppendsCodesJSON(t *testing.T) {
+	for in, want := range map[string]string{"field": "field.codes.json", "field.codes.json": "field.codes.json", "FIELD.CODES.JSON": "FIELD.CODES.JSON", "": ""} {
+		if got := Codes(in); got != want {
+			t.Fatalf("Codes(%q)=%q want %q", in, got, want)
+		}
+	}
+}
