@@ -5,10 +5,7 @@ import (
 	"os"
 	"runtime/debug"
 
-	"lsurvey/internal/csvpoints"
-	"lsurvey/internal/dxf"
-	"lsurvey/internal/geojson"
-	"lsurvey/internal/paths"
+	"lsurvey/internal/app"
 	"lsurvey/internal/project"
 	"lsurvey/internal/tui"
 )
@@ -23,31 +20,8 @@ func main() {
 }
 
 func run(args []string) error {
-	if len(args) >= 4 && args[0] == "export" && args[1] == "dxf" {
-		p, err := project.Load(args[2])
-		if err != nil {
-			return err
-		}
-		f, err := os.Create(paths.DXF(args[3]))
-		if err != nil {
-			return err
-		}
-		defer f.Close()
-		return dxf.Write(f, p)
-	}
-	if len(args) >= 4 && args[0] == "export" && args[1] == "csv" {
-		p, err := project.Load(args[2])
-		if err != nil {
-			return err
-		}
-		return csvpoints.ExportFile(paths.CSV(args[3]), p)
-	}
-	if len(args) >= 4 && args[0] == "export" && args[1] == "geojson" {
-		p, err := project.Load(args[2])
-		if err != nil {
-			return err
-		}
-		return geojson.ExportFile(paths.GeoJSON(args[3]), p)
+	if len(args) >= 4 && args[0] == "export" {
+		return app.ExportProject(args[1], args[2], args[3])
 	}
 
 	path := ""

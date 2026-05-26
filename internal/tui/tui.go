@@ -2,23 +2,18 @@ package tui
 
 import (
 	"fmt"
-	"os"
-	"strconv"
 	"strings"
 	"time"
 
 	"github.com/charmbracelet/bubbles/key"
+	"github.com/charmbracelet/bubbles/list"
 	"github.com/charmbracelet/bubbles/textinput"
 	"github.com/charmbracelet/bubbles/viewport"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 
-	"lsurvey/internal/cogo"
-	"lsurvey/internal/csvpoints"
-	"lsurvey/internal/dxf"
-	"lsurvey/internal/geojson"
+	"lsurvey/internal/app"
 	"lsurvey/internal/help"
-	"lsurvey/internal/paths"
 	"lsurvey/internal/project"
 )
 
@@ -43,7 +38,15 @@ const (
 	focusLines
 )
 
+type helpPage int
+
+const (
+	helpPageBrowser helpPage = iota
+	helpPageDetail
+)
+
 type Model struct {
+	session *app.Session
 	project *project.Project
 	path    string
 	version string
@@ -51,6 +54,9 @@ type Model struct {
 
 	input      textinput.Model
 	help       viewport.Model
+	helpList   list.Model
+	helpPage   helpPage
+	helpReturn bool
 	pointsView viewport.Model
 	linesView  viewport.Model
 	mode       Mode
@@ -95,16 +101,19 @@ func newModel(p *project.Project, path, version string, showSplash bool) Model {
 	input.KeyMap.PrevSuggestion = key.NewBinding(key.WithKeys("ctrl+p"))
 
 	helpView := viewport.New(80, 20)
-	helpView.SetContent(help.Render(""))
+	helpBrowser := newHelpBrowser(76, 16)
 	pointsView := viewport.New(80, 10)
 	linesView := viewport.New(80, 6)
 
+	session := app.NewSession(p, path, version)
 	m := Model{
+		session:    session,
 		project:    p,
 		path:       path,
 		version:    version,
 		input:      input,
 		help:       helpView,
+		helpList:   helpBrowser,
 		pointsView: pointsView,
 		linesView:  linesView,
 		mode:       ModeMain,
@@ -151,6 +160,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.input.Width = max(20, msg.Width-6)
 		m.help.Width = max(20, msg.Width-8)
 		m.help.Height = max(5, msg.Height-5)
+		m.helpList.SetSize(max(20, msg.Width-4), max(5, msg.Height-4))
 		m.syncMainViewports()
 		return m, nil
 	case splashDoneMsg:
@@ -158,8 +168,14 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.mode = ModeMain
 		}
 		return m, nil
+	case list.FilterMatchesMsg:
+		if m.mode == ModeHelp && m.helpPage == helpPageBrowser {
+			var cmd tea.Cmd
+			m.helpList, cmd = m.helpList.Update(msg)
+			return m, cmd
+		}
 	case tea.MouseMsg:
-		if m.mode == ModeHelp && isWheelMouse(msg) {
+		if m.mode == ModeHelp && m.helpPage == helpPageDetail && isWheelMouse(msg) {
 			var cmd tea.Cmd
 			m.help, cmd = m.help.Update(msg)
 			return m, cmd
@@ -179,13 +195,38 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 		if m.mode == ModeHelp {
-			switch msg.String() {
-			case "esc", "f1":
-				m.mode = m.priorMode()
-				return m, nil
-			case "ctrl+c":
+			if msg.String() == "ctrl+c" {
 				m.quitting = true
 				return m, tea.Quit
+			}
+			if msg.String() == "f1" {
+				m.mode = m.priorMode()
+				return m, nil
+			}
+			if m.helpPage == helpPageBrowser {
+				if msg.String() == "enter" && !m.helpList.SettingFilter() {
+					if item, ok := m.helpList.SelectedItem().(helpCommandItem); ok {
+						m.showHelpDetail(item.command.Name, true)
+					}
+					return m, nil
+				}
+				if msg.String() == "esc" && !m.helpList.SettingFilter() && !m.helpList.IsFiltered() {
+					m.mode = m.priorMode()
+					return m, nil
+				}
+				var cmd tea.Cmd
+				m.helpList, cmd = m.helpList.Update(msg)
+				return m, cmd
+			}
+			switch msg.String() {
+			case "esc":
+				if m.helpReturn {
+					m.helpPage = helpPageBrowser
+					m.helpReturn = false
+				} else {
+					m.mode = m.priorMode()
+				}
+				return m, nil
 			}
 			var cmd tea.Cmd
 			m.help, cmd = m.help.Update(msg)
@@ -317,7 +358,15 @@ func (m Model) View() string {
 	if m.mode == ModeHelp {
 		width := max(60, m.width)
 		height := max(18, m.height)
-		body := mutedStyle.Render("Esc closes, arrows/page keys or mouse wheel scroll") + "\n" + m.help.View()
+		if m.helpPage == helpPageBrowser {
+			body := mutedStyle.Render("/: filter  Enter: details  Esc: clear filter/close  F1: close") + "\n" + m.helpList.View()
+			return box("Help", body, width, height)
+		}
+		back := "Esc closes"
+		if m.helpReturn {
+			back = "Esc returns to results"
+		}
+		body := mutedStyle.Render(back+", arrows/page keys or mouse wheel scroll  F1: close") + "\n" + m.help.View()
 		return box("Help", body, width, height)
 	}
 	if m.mode == ModeMap {
@@ -384,7 +433,7 @@ func (m *Model) ExecuteCommand(command string) tea.Cmd {
 	if command == "" {
 		return nil
 	}
-	fields, err := cogo.Fields(command)
+	fields, err := app.Fields(command)
 	if err != nil {
 		m.setError(err.Error())
 		return nil
@@ -396,140 +445,6 @@ func (m *Model) ExecuteCommand(command string) tea.Cmd {
 	case "quit", "exit":
 		m.quitting = true
 		return tea.Quit
-	case "new":
-		name := "untitled"
-		if len(fields) > 1 {
-			name = strings.Join(fields[1:], " ")
-		}
-		m.project = project.New(name)
-		m.path = ""
-		m.dirty = false
-		m.mapState = newMapState()
-		m.message = "new project: " + name
-	case "open":
-		if len(fields) != 2 {
-			m.setError("usage: open <file>")
-			return nil
-		}
-		path := paths.Project(fields[1])
-		loaded, err := project.Load(path)
-		if err != nil {
-			m.setError(err.Error())
-			return nil
-		}
-		m.project = loaded
-		m.path = path
-		m.dirty = false
-		m.mapState = newMapState()
-		m.message = "opened " + m.path
-	case "save":
-		if len(fields) > 1 {
-			m.path = paths.Project(fields[1])
-		}
-		if m.path == "" {
-			m.setError("usage: save <file>")
-			return nil
-		}
-		m.path = paths.Project(m.path)
-		m.project.AppVersion = m.version
-		if err := project.Save(m.path, m.project); err != nil {
-			m.setError(err.Error())
-			return nil
-		}
-		m.dirty = false
-		m.message = "saved " + m.path
-	case "saveas":
-		if len(fields) != 2 {
-			m.setError("usage: saveas <file>")
-			return nil
-		}
-		m.path = paths.Project(fields[1])
-		m.project.AppVersion = m.version
-		if err := project.Save(m.path, m.project); err != nil {
-			m.setError(err.Error())
-			return nil
-		}
-		m.dirty = false
-		m.message = "saved " + m.path
-	case "export":
-		if len(fields) != 3 {
-			m.setError("usage: export dxf|csv|geojson <file>")
-			return nil
-		}
-		switch fields[1] {
-		case "dxf":
-			path := paths.DXF(fields[2])
-			if err := writeDXF(path, m.project); err != nil {
-				m.setError(err.Error())
-				return nil
-			}
-			m.message = "exported " + path + m.coordinateSuffix()
-		case "csv":
-			path := paths.CSV(fields[2])
-			if err := csvpoints.ExportFile(path, m.project); err != nil {
-				m.setError(err.Error())
-				return nil
-			}
-			m.message = "exported " + path + m.coordinateSuffix()
-		case "geojson":
-			path := paths.GeoJSON(fields[2])
-			if err := geojson.ExportFile(path, m.project); err != nil {
-				m.setError(err.Error())
-				return nil
-			}
-			m.message = "exported " + path + m.coordinateSuffix()
-		default:
-			m.setError("usage: export dxf|csv|geojson <file>")
-		}
-	case "import":
-		if len(fields) != 3 {
-			m.setError("usage: import csv|geojson <file>")
-			return nil
-		}
-		switch fields[1] {
-		case "csv":
-			path := paths.CSV(fields[2])
-			count, err := csvpoints.ImportFile(path, m.project)
-			if err != nil {
-				m.setError(err.Error())
-				return nil
-			}
-			m.dirty = true
-			m.message = fmt.Sprintf("imported %d points from %s", count, path)
-		case "geojson":
-			path := paths.GeoJSON(fields[2])
-			points, lines, err := geojson.ImportFile(path, m.project)
-			if err != nil {
-				m.setError(err.Error())
-				return nil
-			}
-			m.dirty = true
-			m.message = fmt.Sprintf("imported %d points and %d lines from %s", points, lines, path)
-		default:
-			m.setError("usage: import csv|geojson <file>")
-		}
-	case "desc":
-		description := strings.TrimSpace(strings.TrimPrefix(command, "desc"))
-		if description == "" {
-			m.setError("usage: desc <project description>")
-			return nil
-		}
-		m.project.Description = description
-		m.dirty = true
-		m.message = "project description updated"
-	case "precision":
-		if len(fields) != 2 {
-			m.setError("usage: precision <0-6>")
-			return nil
-		}
-		precision, err := strconv.Atoi(fields[1])
-		if err != nil || precision < 0 || precision > 6 {
-			m.setError("precision must be a number from 0 to 6")
-			return nil
-		}
-		m.project.SetDisplayPrecision(precision)
-		m.dirty = true
-		m.message = fmt.Sprintf("display precision set to %d", precision)
 	case "filter":
 		m.filter = strings.TrimSpace(strings.TrimPrefix(command, "filter"))
 		m.message = "filter " + quoteBlank(m.filter)
@@ -551,15 +466,25 @@ func (m *Model) ExecuteCommand(command string) tea.Cmd {
 	case "map":
 		m.handleMapCommand(fields)
 	default:
-		result, err := cogo.ExecuteAndRecord(m.project, command)
+		outcome, err := m.session.Execute(command)
 		if err != nil {
 			m.setError(err.Error())
 			return nil
 		}
-		m.dirty = true
-		m.message = result.Message
+		m.syncSessionState()
+		if outcome.ProjectReplaced {
+			m.mapState = newMapState()
+		}
+		m.message = outcome.Message
 	}
 	return nil
+}
+
+func (m *Model) syncSessionState() {
+	m.project = m.session.Project
+	m.path = m.session.Path
+	m.version = m.session.Version
+	m.dirty = m.session.Dirty
 }
 
 func (m Model) executeInput() (tea.Model, tea.Cmd) {
@@ -572,10 +497,23 @@ func (m Model) executeInput() (tea.Model, tea.Cmd) {
 
 func (m *Model) openHelp(query string) {
 	m.prior = m.mode
-	m.help.SetContent(help.RenderStyled(query))
-	m.help.GotoTop()
+	if strings.TrimSpace(query) == "" {
+		m.helpList.ResetFilter()
+		m.helpList.ResetSelected()
+		m.helpPage = helpPageBrowser
+		m.helpReturn = false
+	} else {
+		m.showHelpDetail(query, false)
+	}
 	m.mode = ModeHelp
 	m.message = "help"
+}
+
+func (m *Model) showHelpDetail(query string, returnToBrowser bool) {
+	m.help.SetContent(help.RenderStyled(query))
+	m.help.GotoTop()
+	m.helpPage = helpPageDetail
+	m.helpReturn = returnToBrowser
 }
 
 func (m Model) priorMode() Mode {
@@ -683,7 +621,7 @@ func (m *Model) syncMainViewports() {
 	m.linesView.Width = contentWidth
 	m.linesView.Height = lineContentHeight
 	m.pointsView.SetContent(FormatPointRows(FilterAndSortPoints(m.project, m.filter, m.sort, m.sortAsc), m.project.DisplayPrecision()))
-	m.linesView.SetContent(FormatLineRows(m.project.SortedLines(), m.project.SortedContourSets(), m.project.DisplayPrecision()))
+	m.linesView.SetContent(FormatLineRows(m.project.SortedFeatures(), m.project.SortedContourSets(), m.project.DisplayPrecision()))
 }
 
 func (m *Model) shouldCycleFocusOnTab() bool {
@@ -908,8 +846,8 @@ func (m Model) infoText(visible int) string {
 	if strings.TrimSpace(m.project.Description) != "" {
 		label = m.project.Description
 	}
-	info := fmt.Sprintf("%s  path=%s  points=%d/%d  lines=%d  contours=%d  precision=%d%s  filter=%s  sort=%s %s  %s",
-		label, path, visible, len(m.project.Points), len(m.project.Lines), len(m.project.ContourSets), m.project.DisplayPrecision(), m.coordinateSuffix(), filter, m.sort, m.sortDirection(), dirty)
+	info := fmt.Sprintf("%s  path=%s  points=%d/%d  features=%d  contours=%d  precision=%d%s  filter=%s  sort=%s %s  %s",
+		label, path, visible, len(m.project.Points), len(m.project.Features), len(m.project.ContourSets), m.project.DisplayPrecision(), m.coordinateSuffix(), filter, m.sort, m.sortDirection(), dirty)
 	if m.project.Traverse != nil {
 		traverse := fmt.Sprintf("  trav current=%s next=%s", m.project.Traverse.Current, m.project.NextPointID())
 		if m.project.Traverse.Close != "" {
@@ -926,18 +864,6 @@ func (m Model) coordinateSuffix() string {
 		return ""
 	}
 	return "  coords=" + label
-}
-
-func writeDXF(path string, p *project.Project) error {
-	f, err := os.Create(path)
-	if err != nil {
-		return err
-	}
-	err = dxf.Write(f, p)
-	if closeErr := f.Close(); err == nil {
-		err = closeErr
-	}
-	return err
 }
 
 func quoteBlank(value string) string {

@@ -6,6 +6,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/charmbracelet/bubbles/list"
 	tea "github.com/charmbracelet/bubbletea"
 
 	"lsurvey/internal/cogo"
@@ -24,6 +25,34 @@ func TestExecuteCommandRoutesCogoAndUpdatesDirtyState(t *testing.T) {
 	}
 	if m.lastErr != "" {
 		t.Fatalf("unexpected error %q", m.lastErr)
+	}
+}
+
+func TestExecuteCommandLeavesReadOnlyCogoResultClean(t *testing.T) {
+	m := NewModel(project.New("test"), "")
+	m.ExecuteCommand("pt add 1 0 0")
+	m.ExecuteCommand("pt add 2 10 0")
+	m.ExecuteCommand("save " + filepath.Join(t.TempDir(), "job"))
+	m.ExecuteCommand("inverse 1 2")
+	if m.dirty {
+		t.Fatal("read-only calculation should not mark model dirty")
+	}
+}
+
+func TestExecuteCommandUndoRedoAndInfoUseSession(t *testing.T) {
+	m := NewModel(project.New("test"), "")
+	m.ExecuteCommand("pt add 1 100 200 PEG")
+	m.ExecuteCommand("undo")
+	if _, exists := m.project.Points["1"]; exists || !strings.Contains(m.message, "undid") {
+		t.Fatalf("undo project=%+v message=%q", m.project.Points, m.message)
+	}
+	m.ExecuteCommand("redo")
+	if _, exists := m.project.Points["1"]; !exists || !strings.Contains(m.message, "redid") {
+		t.Fatalf("redo project=%+v message=%q", m.project.Points, m.message)
+	}
+	m.ExecuteCommand("info")
+	if !strings.Contains(m.message, "project=test") || !strings.Contains(m.message, "undo=true") {
+		t.Fatalf("info message=%q", m.message)
 	}
 }
 
@@ -82,6 +111,9 @@ func TestExecuteCommandFilterSortAndHelp(t *testing.T) {
 	if m.mode != ModeHelp {
 		t.Fatal("expected help mode")
 	}
+	if m.helpPage != helpPageDetail || m.helpReturn {
+		t.Fatalf("help page=%v return=%v want direct detail", m.helpPage, m.helpReturn)
+	}
 	if !strings.Contains(m.help.View(), "rad") {
 		t.Fatalf("help view missing rad: %s", m.help.View())
 	}
@@ -99,10 +131,11 @@ func TestMouseWheelScrollsHelpViewport(t *testing.T) {
 	m := NewModel(project.New("test"), "")
 	updated, _ := m.Update(tea.WindowSizeMsg{Width: 80, Height: 18})
 	m = updated.(Model)
-	m.ExecuteCommand("help")
+	m.ExecuteCommand("help rad")
 	if m.mode != ModeHelp {
 		t.Fatal("expected help mode")
 	}
+	m.help.SetContent(strings.Repeat("long detail line\n", 60))
 
 	updated, _ = m.Update(tea.MouseMsg{
 		X:      10,
@@ -117,6 +150,111 @@ func TestMouseWheelScrollsHelpViewport(t *testing.T) {
 	if !strings.Contains(m.View(), "mouse wheel scroll") {
 		t.Fatalf("help instructions should mention mouse scrolling:\n%s", m.View())
 	}
+}
+
+func TestHelpBrowserFiltersAndOpensSelectedDetail(t *testing.T) {
+	m := NewModel(project.New("test"), "")
+	m.ExecuteCommand("help")
+	if m.mode != ModeHelp || m.helpPage != helpPageBrowser {
+		t.Fatalf("mode=%v page=%v want browser", m.mode, m.helpPage)
+	}
+	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'/'}})
+	m = updated.(Model)
+	if !m.helpList.SettingFilter() {
+		t.Fatal("slash should enter help filtering")
+	}
+	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyEsc})
+	m = updated.(Model)
+	if m.mode != ModeHelp || m.helpList.SettingFilter() {
+		t.Fatal("escape should cancel filtering without closing browser")
+	}
+
+	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'/'}})
+	m = updated.(Model)
+	updated, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("landxml")})
+	m = updated.(Model)
+	updated, _ = m.Update(filterMatchesFromCommand(t, cmd))
+	m = updated.(Model)
+	if count := len(m.helpList.VisibleItems()); count == 0 || count >= len(m.helpList.Items()) {
+		t.Fatalf("filtered commands=%d should be a non-empty reduced result set", count)
+	}
+	found := false
+	for _, result := range m.helpList.VisibleItems() {
+		item, ok := result.(helpCommandItem)
+		if ok && item.command.Name == "export landxml" {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatal("filtered results do not include export landxml")
+	}
+
+	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	m = updated.(Model)
+	for {
+		item, ok := m.helpList.SelectedItem().(helpCommandItem)
+		if ok && item.command.Name == "export landxml" {
+			break
+		}
+		updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyDown})
+		m = updated.(Model)
+	}
+	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	m = updated.(Model)
+	if m.helpPage != helpPageDetail || !m.helpReturn || !strings.Contains(m.help.View(), "export landxml") {
+		t.Fatalf("detail page=%v return=%v content=%q", m.helpPage, m.helpReturn, m.help.View())
+	}
+	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyEsc})
+	m = updated.(Model)
+	if m.helpPage != helpPageBrowser || m.helpList.FilterValue() != "landxml" {
+		t.Fatalf("browser return page=%v filter=%q", m.helpPage, m.helpList.FilterValue())
+	}
+	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyEsc})
+	m = updated.(Model)
+	if m.mode != ModeHelp || m.helpList.IsFiltered() {
+		t.Fatal("first browser escape should clear the applied filter")
+	}
+	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyEsc})
+	m = updated.(Model)
+	if m.mode != ModeMain {
+		t.Fatalf("mode=%v want closed help", m.mode)
+	}
+}
+
+func TestHelpBrowserRendersLogicalSections(t *testing.T) {
+	browser := newHelpBrowser(120, 120)
+	got := browser.View()
+	for _, want := range []string{"Project & Session", "Point Data", "COGO Calculations", "Feature Geometry & Styling", "Import & Export", "Interface"} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("help browser missing section %q:\n%s", want, got)
+		}
+	}
+}
+
+func filterMatchesFromCommand(t *testing.T, cmd tea.Cmd) list.FilterMatchesMsg {
+	t.Helper()
+	msg, ok := findFilterMatches(cmd)
+	if !ok {
+		t.Fatal("filtering did not produce a list.FilterMatchesMsg")
+	}
+	return msg
+}
+
+func findFilterMatches(cmd tea.Cmd) (list.FilterMatchesMsg, bool) {
+	if cmd == nil {
+		return nil, false
+	}
+	switch msg := cmd().(type) {
+	case list.FilterMatchesMsg:
+		return msg, true
+	case tea.BatchMsg:
+		for _, nested := range msg {
+			if result, ok := findFilterMatches(nested); ok {
+				return result, true
+			}
+		}
+	}
+	return nil, false
 }
 
 func TestDescriptionCommandUpdatesStatusAndPersists(t *testing.T) {
@@ -286,10 +424,10 @@ func TestExecuteCommandImportExportGeoJSON(t *testing.T) {
 	if len(loaded.project.Points) != 2 {
 		t.Fatalf("points=%d want 2", len(loaded.project.Points))
 	}
-	if len(loaded.project.Lines) != 1 {
-		t.Fatalf("lines=%d want 1", len(loaded.project.Lines))
+	if len(loaded.project.Features) != 1 {
+		t.Fatalf("lines=%d want 1", len(loaded.project.Features))
 	}
-	if got := loaded.project.Lines["L1"]; got.From != "1" || got.To != "2" {
+	if got := loaded.project.Features["L1"]; got.PointIDs[0] != "1" || got.PointIDs[1] != "2" {
 		t.Fatalf("line=%+v want from=1 to=2", got)
 	}
 	if !loaded.dirty {
@@ -432,7 +570,7 @@ func TestMapLineZoomFitAndEscKeys(t *testing.T) {
 	p := project.New("test")
 	p.Points["1"] = geom.Point{ID: "1", Northing: 0, Easting: 0}
 	p.Points["2"] = geom.Point{ID: "2", Northing: 0, Easting: 10}
-	p.Lines["L1"] = project.Line{ID: "L1", From: "1", To: "2"}
+	p.Features["L1"] = project.Feature{ID: "L1", Kind: project.FeatureLine, PointIDs: []string{"1", "2"}}
 	m := NewModel(p, "")
 	m.mode = ModeMap
 
@@ -484,6 +622,9 @@ func TestMapEntryResetsLabelsButMapHelpReturnDoesNot(t *testing.T) {
 
 	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyF1})
 	m = updated.(Model)
+	if m.helpPage != helpPageBrowser {
+		t.Fatalf("F1 help page=%v want browser", m.helpPage)
+	}
 	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyEsc})
 	m = updated.(Model)
 	if m.mode != ModeMap || !m.mapState.ShowCodes {
@@ -668,7 +809,7 @@ func TestMouseWheelScrollsViewportUnderCursor(t *testing.T) {
 		id := strconv.Itoa(i + 1)
 		p.Points[id] = geom.Point{ID: id, Easting: float64(i), Northing: float64(i)}
 	}
-	p.Lines["L1"] = project.Line{ID: "L1", From: "1", To: "2"}
+	p.Features["L1"] = project.Feature{ID: "L1", Kind: project.FeatureLine, PointIDs: []string{"1", "2"}}
 	m := NewModel(p, "")
 	m.width = 80
 	m.height = 24

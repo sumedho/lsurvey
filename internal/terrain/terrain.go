@@ -126,10 +126,14 @@ func Generate(p *project.Project, opts Options) (project.ContourSet, error) {
 	}
 	breaklineIDs := make([]string, 0, len(breaklines))
 	breaklineRoles := make(map[string]string)
+	seenBreaklineIDs := make(map[string]bool)
 	for _, bl := range breaklines {
-		breaklineIDs = append(breaklineIDs, bl.ID)
-		if role := p.Lines[bl.ID].TerrainRole; role != "" {
-			breaklineRoles[bl.ID] = role
+		if !seenBreaklineIDs[bl.FeatureID] {
+			breaklineIDs = append(breaklineIDs, bl.FeatureID)
+			seenBreaklineIDs[bl.FeatureID] = true
+		}
+		if role := p.Features[bl.FeatureID].TerrainRole; role != "" {
+			breaklineRoles[bl.FeatureID] = role
 		}
 	}
 	sort.Strings(breaklineIDs)

@@ -180,6 +180,23 @@ func TestCommandCompletionIncludesBearingAndDistanceMath(t *testing.T) {
 	}
 }
 
+func TestCommandCompletionIncludesUndoHistoryAndInfo(t *testing.T) {
+	m := NewModel(project.New("test"), "")
+	for input, want := range map[string]string{
+		"und":     "undo",
+		"red":     "redo",
+		"history": "history [limit=<n>]",
+		"inf":     "info",
+	} {
+		m.input.SetValue(input)
+		m.refreshCompletions()
+		matches := strings.Join(m.input.MatchedSuggestions(), "\n")
+		if !strings.Contains(matches, want) {
+			t.Fatalf("input=%q suggestions=%q missing %q", input, matches, want)
+		}
+	}
+}
+
 func TestCommandCompletionIncludesCloseCommand(t *testing.T) {
 	m := NewModel(project.New("test"), "")
 	m.project.Points["1"] = geom.Point{ID: "1", Easting: 100, Northing: 200}

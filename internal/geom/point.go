@@ -9,6 +9,7 @@ type Point struct {
 	Elevation   *float64 `json:"elevation,omitempty"`
 	Code        string   `json:"code,omitempty"`
 	Description string   `json:"description,omitempty"`
+	GroupID     string   `json:"group_id,omitempty"`
 }
 
 type InverseResult struct {

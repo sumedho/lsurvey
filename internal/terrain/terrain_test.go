@@ -91,7 +91,7 @@ func TestGenerateContoursValidatesBreaklineElevations(t *testing.T) {
 	p.Points["1"] = geom.Point{ID: "1", Northing: 0, Easting: 0, Elevation: &z0}
 	p.Points["2"] = geom.Point{ID: "2", Northing: 0, Easting: 10}
 	p.Points["3"] = geom.Point{ID: "3", Northing: 10, Easting: 0, Elevation: &z10}
-	p.Lines["B1"] = project.Line{ID: "B1", From: "1", To: "2"}
+	p.Features["B1"] = project.Feature{ID: "B1", Kind: project.FeatureLine, PointIDs: []string{"1", "2"}}
 	if _, err := Generate(p, Options{ID: "C1", Interval: 5, UseBreakline: true, BreaklineIDs: []string{"B1"}}); err == nil {
 		t.Fatal("expected breakline elevation error")
 	}
@@ -104,8 +104,8 @@ func TestGenerateContoursRejectsCrossingBreaklines(t *testing.T) {
 	p.Points["2"] = geom.Point{ID: "2", Northing: 10, Easting: 10, Elevation: &z}
 	p.Points["3"] = geom.Point{ID: "3", Northing: 10, Easting: 0, Elevation: &z}
 	p.Points["4"] = geom.Point{ID: "4", Northing: 0, Easting: 10, Elevation: &z}
-	p.Lines["B1"] = project.Line{ID: "B1", From: "1", To: "2"}
-	p.Lines["B2"] = project.Line{ID: "B2", From: "3", To: "4"}
+	p.Features["B1"] = project.Feature{ID: "B1", Kind: project.FeatureLine, PointIDs: []string{"1", "2"}}
+	p.Features["B2"] = project.Feature{ID: "B2", Kind: project.FeatureLine, PointIDs: []string{"3", "4"}}
 	if _, err := Generate(p, Options{ID: "C1", Interval: 1, UseBreakline: true}); err == nil {
 		t.Fatal("expected crossing breakline error")
 	}
@@ -194,9 +194,37 @@ func TestGenerateContoursRejectsOpenBoundaryLinework(t *testing.T) {
 	p := planarContourProject()
 	p.Points["B1"] = geom.Point{ID: "B1", Easting: 0, Northing: 2}
 	p.Points["B2"] = geom.Point{ID: "B2", Easting: 10, Northing: 2}
-	p.Lines["B1"] = project.Line{ID: "B1", From: "B1", To: "B2", Code: "BOUND"}
+	p.Features["B1"] = project.Feature{ID: "B1", Kind: project.FeatureLine, PointIDs: []string{"B1", "B2"}, Code: "BOUND"}
 	if _, err := Generate(p, Options{ID: "C1", Interval: 5, BoundaryCodes: []string{"BOUND"}}); err == nil {
 		t.Fatal("expected open boundary error")
+	}
+}
+
+func TestGenerateContoursUsesPolylineAsBreakline(t *testing.T) {
+	p := planarContourProject()
+	p.Features["R1"] = project.Feature{ID: "R1", Kind: project.FeaturePolyline, PointIDs: []string{"1", "2", "4"}, TerrainRole: "ridge"}
+	set, err := Generate(p, Options{ID: "C1", Interval: 5, UseBreakline: true, BreaklineIDs: []string{"R1"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(set.Breaklines) != 1 || set.Breaklines[0] != "R1" || set.BreaklineRoles["R1"] != "ridge" {
+		t.Fatalf("breaklines=%+v roles=%+v", set.Breaklines, set.BreaklineRoles)
+	}
+}
+
+func TestGenerateContoursUsesPolygonAsBoundaryNotBreakline(t *testing.T) {
+	p := planarContourProject()
+	p.Points["B1"] = geom.Point{ID: "B1", Easting: 1, Northing: 1}
+	p.Points["B2"] = geom.Point{ID: "B2", Easting: 9, Northing: 1}
+	p.Points["B3"] = geom.Point{ID: "B3", Easting: 9, Northing: 9}
+	p.Points["B4"] = geom.Point{ID: "B4", Easting: 1, Northing: 9}
+	p.Features["LOT"] = project.Feature{ID: "LOT", Kind: project.FeaturePolygon, PointIDs: []string{"B1", "B2", "B3", "B4"}, Code: "BOUND"}
+	set, err := Generate(p, Options{ID: "C1", Interval: 5, UseBreakline: true, BoundaryCodes: []string{"BOUND"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(set.BoundaryLines) != 1 || set.BoundaryLines[0] != "LOT" || len(set.Breaklines) != 0 {
+		t.Fatalf("boundary=%+v breaklines=%+v", set.BoundaryLines, set.Breaklines)
 	}
 }
 
@@ -378,13 +406,13 @@ func TestSmoothingLeavesBreaklineContactFixed(t *testing.T) {
 	p := project.New("test")
 	p.Points["A"] = geom.Point{ID: "A", Easting: 5, Northing: -5}
 	p.Points["B"] = geom.Point{ID: "B", Easting: 5, Northing: 5}
-	p.Lines["R1"] = project.Line{ID: "R1", From: "A", To: "B"}
+	p.Features["R1"] = project.Feature{ID: "R1", Kind: project.FeatureLine, PointIDs: []string{"A", "B"}}
 	vertices := []project.ContourVertex{
 		{Easting: 0, Northing: 0},
 		{Easting: 5, Northing: 0},
 		{Easting: 10, Northing: 0},
 	}
-	got := smoothVertices(vertices, 2, clipRegions{}, p, []breakline{{ID: "R1"}})
+	got := smoothVertices(vertices, 2, clipRegions{}, p, []breakline{{ID: "R1:1", FeatureID: "R1", From: "A", To: "B"}})
 	if len(got) != len(vertices) || !sameVertex(got[1], vertices[1]) {
 		t.Fatalf("smoothed=%+v want protected contact unchanged", got)
 	}
@@ -433,7 +461,7 @@ func TestGenerateContoursHandlesDenseNonCrossingBreaklineNetworkDeterministicall
 			from := string(rune('A' + row*3 + col))
 			to := string(rune('A' + row*3 + col + 1))
 			id := from + to
-			p.Lines[id] = project.Line{ID: id, From: from, To: to}
+			p.Features[id] = project.Feature{ID: id, Kind: project.FeatureLine, PointIDs: []string{from, to}}
 		}
 	}
 	first, err := Generate(p, Options{ID: "C1", Interval: 2.5, UseBreakline: true})
@@ -448,11 +476,11 @@ func TestGenerateContoursHandlesDenseNonCrossingBreaklineNetworkDeterministicall
 		math.Abs(first.Polylines[0].Elevation-second.Polylines[0].Elevation) > eps {
 		t.Fatalf("first=%+v second=%+v want deterministic contours", first.Polylines, second.Polylines)
 	}
-	if len(first.Breaklines) != len(p.Lines) {
+	if len(first.Breaklines) != len(p.Features) {
 		t.Fatalf("breaklines=%v want every selected constraint", first.Breaklines)
 	}
-	for id, line := range p.Lines {
-		a, b := contourVertex(p, line.From), contourVertex(p, line.To)
+	for id, line := range p.Features {
+		a, b := contourVertex(p, line.PointIDs[0]), contourVertex(p, line.PointIDs[1])
 		found := false
 		for _, polyline := range first.Polylines {
 			for _, v := range polyline.Vertices {
@@ -484,7 +512,7 @@ func addRing(p *project.Project, prefix, code string, points []geom.Point) {
 	}
 	for i := range points {
 		id := prefix + string(rune('1'+i))
-		p.Lines[id] = project.Line{ID: id, From: points[i].ID, To: points[(i+1)%len(points)].ID, Code: code}
+		p.Features[id] = project.Feature{ID: id, Kind: project.FeatureLine, PointIDs: []string{points[i].ID, points[(i+1)%len(points)].ID}, Code: code}
 	}
 }
 

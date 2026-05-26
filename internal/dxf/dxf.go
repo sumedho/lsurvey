@@ -36,7 +36,7 @@ func Write(w io.Writer, p *project.Project) error {
 
 	bw.pair(0, "SECTION")
 	bw.pair(2, "TABLES")
-	writeLayerTable(bw)
+	writeLayerTable(bw, p)
 	bw.pair(0, "ENDSEC")
 
 	bw.pair(0, "SECTION")
@@ -47,7 +47,8 @@ func Write(w io.Writer, p *project.Project) error {
 		if pt.Elevation != nil {
 			z = *pt.Elevation
 		}
-		bw.entity("POINT", layer("POINTS", pt.Code))
+		pointLayer, pointColor := styleFor(p, "POINTS", pt.Code, pt.GroupID, 7)
+		bw.entityColor("POINT", pointLayer, pointColor)
 		bw.pair(10, pt.Easting)
 		bw.pair(20, pt.Northing)
 		bw.pair(30, z)
@@ -56,7 +57,8 @@ func Write(w io.Writer, p *project.Project) error {
 		if pt.Code != "" {
 			label += " " + pt.Code
 		}
-		bw.entity("TEXT", layer("LABELS", pt.Code))
+		labelLayer, labelColor := styleFor(p, "LABELS", pt.Code, pt.GroupID, 7)
+		bw.entityColor("TEXT", labelLayer, labelColor)
 		bw.pair(10, pt.Easting)
 		bw.pair(20, pt.Northing)
 		bw.pair(30, z)
@@ -64,30 +66,65 @@ func Write(w io.Writer, p *project.Project) error {
 		bw.pair(1, label)
 	}
 
-	for _, line := range p.SortedLines() {
-		from, ok1 := p.Points[line.From]
-		to, ok2 := p.Points[line.To]
-		if !ok1 || !ok2 {
+	for _, feature := range p.SortedFeatures() {
+		if len(feature.PointIDs) < 2 {
 			continue
 		}
-		z1, z2 := 0.0, 0.0
-		if from.Elevation != nil {
-			z1 = *from.Elevation
+		featureLayer, featureColor := styleFor(p, "LINES", feature.Code, feature.GroupID, lineColor)
+		if feature.Kind == project.FeatureLine {
+			from, to := p.Points[feature.PointIDs[0]], p.Points[feature.PointIDs[1]]
+			z1, z2 := elevation(from), elevation(to)
+			bw.entityColor("LINE", featureLayer, featureColor)
+			bw.pair(10, from.Easting)
+			bw.pair(20, from.Northing)
+			bw.pair(30, z1)
+			bw.pair(11, to.Easting)
+			bw.pair(21, to.Northing)
+			bw.pair(31, z2)
+			inv := geom.Inverse(from, to)
+			if labels, ok := lineAnnotationLabels(from, to, z1, z2, inv, p.DisplayPrecision()); ok {
+				labelLayer, labelColor := "LINE_LABELS", lineLabelColor
+				if feature.GroupID != "" {
+					labelLayer, labelColor = styleFor(p, "LINE_LABELS", "", feature.GroupID, lineLabelColor)
+				}
+				for _, label := range labels {
+					bw.centeredMText(labelLayer, labelColor, label)
+				}
+			}
+			continue
 		}
-		if to.Elevation != nil {
-			z2 = *to.Elevation
+		hasElevation := false
+		for _, pointID := range feature.PointIDs {
+			hasElevation = hasElevation || p.Points[pointID].Elevation != nil
 		}
-		bw.entityColor("LINE", layer("LINES", line.Code), lineColor)
-		bw.pair(10, from.Easting)
-		bw.pair(20, from.Northing)
-		bw.pair(30, z1)
-		bw.pair(11, to.Easting)
-		bw.pair(21, to.Northing)
-		bw.pair(31, z2)
-		inv := geom.Inverse(from, to)
-		if labels, ok := lineAnnotationLabels(from, to, z1, z2, inv, p.DisplayPrecision()); ok {
-			for _, label := range labels {
-				bw.centeredMText("LINE_LABELS", lineLabelColor, label)
+		if hasElevation {
+			bw.entityColor("POLYLINE", featureLayer, featureColor)
+			flag := 8
+			if feature.Kind == project.FeaturePolygon {
+				flag |= 1
+			}
+			bw.pair(70, flag)
+			for _, pointID := range feature.PointIDs {
+				pt := p.Points[pointID]
+				bw.entity("VERTEX", featureLayer)
+				bw.pair(10, pt.Easting)
+				bw.pair(20, pt.Northing)
+				bw.pair(30, elevation(pt))
+				bw.pair(70, 32)
+			}
+			bw.entity("SEQEND", featureLayer)
+		} else {
+			bw.entityColor("LWPOLYLINE", featureLayer, featureColor)
+			bw.pair(90, len(feature.PointIDs))
+			if feature.Kind == project.FeaturePolygon {
+				bw.pair(70, 1)
+			} else {
+				bw.pair(70, 0)
+			}
+			for _, pointID := range feature.PointIDs {
+				pt := p.Points[pointID]
+				bw.pair(10, pt.Easting)
+				bw.pair(20, pt.Northing)
 			}
 		}
 	}
@@ -139,13 +176,39 @@ func Write(w io.Writer, p *project.Project) error {
 	return bw.err
 }
 
-func writeLayerTable(w *writer) {
+func writeLayerTable(w *writer, p *project.Project) {
 	layers := []layerDef{
 		{name: "CONTOURS", color: minorContourColor, lineWeight: minorContourWeight},
 		{name: "CONTOURS_INDEX", color: indexContourColor, lineWeight: indexContourWeight},
 		{name: "CONTOUR_LABELS", color: minorContourColor, lineWeight: minorContourWeight},
 		{name: "CONTOUR_LABELS_INDEX", color: indexContourColor, lineWeight: indexContourWeight},
 		{name: "LINE_LABELS", color: lineLabelColor, lineWeight: 0},
+	}
+	seen := map[string]bool{}
+	for _, def := range layers {
+		seen[def.name] = true
+	}
+	add := func(name string, color int) {
+		if !seen[name] {
+			layers = append(layers, layerDef{name: name, color: color})
+			seen[name] = true
+		}
+	}
+	for _, pt := range p.SortedPoints() {
+		name, color := styleFor(p, "POINTS", pt.Code, pt.GroupID, 7)
+		add(name, color)
+		name, color = styleFor(p, "LABELS", pt.Code, pt.GroupID, 7)
+		add(name, color)
+	}
+	for _, feature := range p.SortedFeatures() {
+		name, color := styleFor(p, "LINES", feature.Code, feature.GroupID, lineColor)
+		add(name, color)
+		if feature.Kind == project.FeatureLine {
+			if feature.GroupID != "" {
+				name, color = styleFor(p, "LINE_LABELS", "", feature.GroupID, lineLabelColor)
+				add(name, color)
+			}
+		}
 	}
 
 	w.pair(0, "TABLE")
@@ -242,6 +305,29 @@ func layer(prefix, code string) string {
 		return '_'
 	}, code)
 	return prefix + "_" + code
+}
+
+func styleFor(p *project.Project, prefix, code, groupID string, fallbackColor int) (string, int) {
+	if group, ok := p.Groups[groupID]; ok {
+		groupLayer := cleanLayerName(group.Layer)
+		if prefix == "LABELS" || prefix == "LINE_LABELS" {
+			return groupLayer + "_LABELS", group.Color
+		}
+		return groupLayer, group.Color
+	}
+	return layer(prefix, code), fallbackColor
+}
+
+func cleanLayerName(value string) string {
+	name := layer("", value)
+	return strings.TrimPrefix(name, "_")
+}
+
+func elevation(pt geom.Point) float64 {
+	if pt.Elevation != nil {
+		return *pt.Elevation
+	}
+	return 0
 }
 
 func contourElevationLabel(elevation float64) string {

@@ -55,17 +55,21 @@ func commandSuggestions(p *project.Project) []string {
 		add("pt rename " + pt.ID + " " + nextPointID)
 	}
 
-	lines := p.SortedLines()
+	lines := p.SortedFeatures()
 	lineCodes := map[string]bool{}
-	for _, line := range lines {
-		add("line del " + line.ID)
-		add("offset " + line.ID + " <offset> <chainage> as " + nextPointID + " [code]")
-		add("contour gen C1 1 breaklines=ids:" + line.ID)
-		if line.Code != "" && !lineCodes[line.Code] {
-			add("contour gen C1 1 boundary=codes:" + line.Code)
-			add("contour gen C1 1 exclude=codes:" + line.Code)
-			add("contour gen C1 1 boundary=codes:" + line.Code + " maxedge=<distance> smooth=1")
-			lineCodes[line.Code] = true
+	for _, feature := range lines {
+		add(feature.Kind + " del " + feature.ID)
+		if feature.Kind == project.FeatureLine {
+			add("offset " + feature.ID + " <offset> <chainage> as " + nextPointID + " [code]")
+		}
+		if feature.Kind != project.FeaturePolygon {
+			add("contour gen C1 1 breaklines=ids:" + feature.ID)
+		}
+		if feature.Code != "" && !lineCodes[feature.Code] {
+			add("contour gen C1 1 boundary=codes:" + feature.Code)
+			add("contour gen C1 1 exclude=codes:" + feature.Code)
+			add("contour gen C1 1 boundary=codes:" + feature.Code + " maxedge=<distance> smooth=1")
+			lineCodes[feature.Code] = true
 		}
 	}
 

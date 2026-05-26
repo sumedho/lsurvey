@@ -22,8 +22,9 @@ func TestProjectJSONRoundTripPreservesPointCode(t *testing.T) {
 		CSF:            0.9996,
 	}
 	z := 42.5
-	p.Points["1"] = geom.Point{ID: "1", Northing: 100, Easting: 200, Elevation: &z, Code: "PEG"}
-	p.Lines["L1"] = Line{ID: "L1", From: "1", To: "1", Code: "BOUNDARY", TerrainRole: "ridge"}
+	p.Groups["BOUND"] = Group{ID: "BOUND", Layer: "BOUNDARIES", Color: 1}
+	p.Points["1"] = geom.Point{ID: "1", Northing: 100, Easting: 200, Elevation: &z, Code: "PEG", GroupID: "BOUND"}
+	p.Features["L1"] = Feature{ID: "L1", Kind: FeatureLine, PointIDs: []string{"1", "1"}, Code: "BOUNDARY", TerrainRole: "ridge", GroupID: "BOUND"}
 	p.ContourSets["C1"] = ContourSet{
 		ID:               "C1",
 		Interval:         1,
@@ -45,6 +46,7 @@ func TestProjectJSONRoundTripPreservesPointCode(t *testing.T) {
 		}},
 	}
 	p.AddHistory("pt add 1 100 200 42.5 PEG", "added point 1", []string{"point:1"}, nil)
+	p.AddHistoryChange("undo", "undid pt edit 1 code=PEG", nil, []string{"point:1"}, map[string]string{"action": "undo"}, nil)
 
 	path := filepath.Join(t.TempDir(), "project.lsurvey.json")
 	if err := Save(path, p); err != nil {
@@ -69,14 +71,20 @@ func TestProjectJSONRoundTripPreservesPointCode(t *testing.T) {
 	if got.DisplayPrecision() != 4 {
 		t.Fatalf("precision=%d want 4", got.DisplayPrecision())
 	}
-	if got.Lines["L1"].Code != "BOUNDARY" {
-		t.Fatalf("line code=%q want BOUNDARY", got.Lines["L1"].Code)
+	if got.Features["L1"].Code != "BOUNDARY" {
+		t.Fatalf("line code=%q want BOUNDARY", got.Features["L1"].Code)
 	}
-	if got.Lines["L1"].TerrainRole != "ridge" {
-		t.Fatalf("line terrain role=%q want ridge", got.Lines["L1"].TerrainRole)
+	if got.Features["L1"].TerrainRole != "ridge" {
+		t.Fatalf("line terrain role=%q want ridge", got.Features["L1"].TerrainRole)
 	}
-	if len(got.History) != 1 {
-		t.Fatalf("history length=%d want 1", len(got.History))
+	if got.Groups["BOUND"].Layer != "BOUNDARIES" || got.Points["1"].GroupID != "BOUND" || got.Features["L1"].GroupID != "BOUND" {
+		t.Fatalf("group styling not preserved: groups=%+v point=%+v feature=%+v", got.Groups, got.Points["1"], got.Features["L1"])
+	}
+	if len(got.History) != 2 {
+		t.Fatalf("history length=%d want 2", len(got.History))
+	}
+	if got.History[1].Updated[0] != "point:1" || len(got.History[1].Extra) == 0 {
+		t.Fatalf("extended history=%+v", got.History[1])
 	}
 	if len(got.ContourSets["C1"].Polylines) != 1 {
 		t.Fatalf("contours=%+v", got.ContourSets)
@@ -121,6 +129,24 @@ func TestLoadMigratesSchemaOneProject(t *testing.T) {
 	}
 }
 
+func TestLoadMigratesLegacyLinesToFeatures(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "old-lines.srv")
+	data := []byte(`{"schema_version":5,"name":"old","points":{},"lines":{"L1":{"id":"L1","from":"1","to":"2","code":"BND"}},"history":[]}`)
+	if err := os.WriteFile(path, data, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	got, err := Load(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if feature := got.Features["L1"]; feature.Kind != FeatureLine || feature.PointIDs[0] != "1" || feature.PointIDs[1] != "2" || feature.Code != "BND" {
+		t.Fatalf("migrated feature=%+v", feature)
+	}
+	if got.LegacyLines != nil {
+		t.Fatalf("legacy lines retained: %+v", got.LegacyLines)
+	}
+}
+
 func TestNextPointIDUsesHighestNumericPointID(t *testing.T) {
 	p := New("test")
 	p.Points["1"] = geom.Point{ID: "1"}
@@ -153,11 +179,11 @@ func TestSortedPointsOrdersNumericIDsNaturallyBeforeTextIDs(t *testing.T) {
 
 func TestNextLineIDUsesHighestNumericLineID(t *testing.T) {
 	p := New("test")
-	p.Lines["L1"] = Line{ID: "L1"}
-	p.Lines["BOUND"] = Line{ID: "BOUND"}
-	p.Lines["L12"] = Line{ID: "L12"}
+	p.Features["L1"] = Feature{ID: "L1"}
+	p.Features["BOUND"] = Feature{ID: "BOUND"}
+	p.Features["L12"] = Feature{ID: "L12"}
 
-	if got := p.NextLineID(); got != "L13" {
+	if got := p.NextFeatureID(); got != "L13" {
 		t.Fatalf("next line id=%q want L13", got)
 	}
 }
@@ -165,10 +191,10 @@ func TestNextLineIDUsesHighestNumericLineID(t *testing.T) {
 func TestSortedLinesOrdersMatchingNumericSuffixesNaturally(t *testing.T) {
 	p := New("test")
 	for _, id := range []string{"L10", "L2", "L1", "BOUND"} {
-		p.Lines[id] = Line{ID: id}
+		p.Features[id] = Feature{ID: id}
 	}
 
-	lines := p.SortedLines()
+	lines := p.SortedFeatures()
 	got := make([]string, len(lines))
 	for i, line := range lines {
 		got[i] = line.ID

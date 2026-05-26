@@ -14,7 +14,7 @@ func TestExportGeoJSONPointsAndLines(t *testing.T) {
 	z2 := 6.5
 	p.Points["1"] = geom.Point{ID: "1", Easting: 200, Northing: 100, Elevation: &z1, Code: "PEG", Description: "corner"}
 	p.Points["2"] = geom.Point{ID: "2", Easting: 210, Northing: 110, Elevation: &z2}
-	p.Lines["L1"] = project.Line{ID: "L1", From: "1", To: "2", Code: "BOUNDARY", Description: "edge", TerrainRole: "ridge"}
+	p.Features["L1"] = project.Feature{ID: "L1", Kind: project.FeatureLine, PointIDs: []string{"1", "2"}, Code: "BOUNDARY", Description: "edge", TerrainRole: "ridge"}
 
 	var out strings.Builder
 	if err := Export(&out, p); err != nil {
@@ -32,8 +32,7 @@ func TestExportGeoJSONPointsAndLines(t *testing.T) {
 		`"id": "1"`,
 		`"code": "PEG"`,
 		`"description": "corner"`,
-		`"from": "1"`,
-		`"to": "2"`,
+		`"point_ids": "1,2"`,
 		`"terrain_role": "ridge"`,
 	} {
 		if !strings.Contains(got, want) {
@@ -42,30 +41,20 @@ func TestExportGeoJSONPointsAndLines(t *testing.T) {
 	}
 }
 
-func TestExportGeoJSONDowngradesMixedElevationLineTo2D(t *testing.T) {
+func TestExportGeoJSONPreservesMixedElevationVertices(t *testing.T) {
 	p := project.New("test")
 	z := 5.5
 	p.Points["1"] = geom.Point{ID: "1", Easting: 0, Northing: 0, Elevation: &z}
 	p.Points["2"] = geom.Point{ID: "2", Easting: 10, Northing: 0}
-	p.Lines["L1"] = project.Line{ID: "L1", From: "1", To: "2"}
+	p.Features["L1"] = project.Feature{ID: "L1", Kind: project.FeatureLine, PointIDs: []string{"1", "2"}}
 
 	var out strings.Builder
 	if err := Export(&out, p); err != nil {
 		t.Fatal(err)
 	}
 	got := out.String()
-	lineSnippet := `"coordinates": [
-          [
-            0,
-            0
-          ],
-          [
-            10,
-            0
-          ]
-        ]`
-	if !strings.Contains(got, lineSnippet) {
-		t.Fatalf("mixed 2D/3D line should export as 2D:\n%s", got)
+	if !strings.Contains(got, "5.5") {
+		t.Fatalf("mixed dimensional feature should retain elevated vertex:\n%s", got)
 	}
 }
 
@@ -117,7 +106,7 @@ func TestImportGeoJSONRejectsPointIDCollision(t *testing.T) {
 	}
 }
 
-func TestImportGeoJSONLineStringSplitsIntoSegments(t *testing.T) {
+func TestImportGeoJSONLineStringPreservesPolyline(t *testing.T) {
 	p := project.New("test")
 	input := `{
   "type":"FeatureCollection",
@@ -129,41 +118,35 @@ func TestImportGeoJSONLineStringSplitsIntoSegments(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if points != 3 || lines != 2 {
-		t.Fatalf("points=%d lines=%d want 3/2", points, lines)
+	if points != 3 || lines != 1 {
+		t.Fatalf("points=%d lines=%d want 3/1", points, lines)
 	}
-	if _, ok := p.Lines["BND_1"]; !ok {
-		t.Fatalf("lines=%+v want BND_1", p.Lines)
-	}
-	if _, ok := p.Lines["BND_2"]; !ok {
-		t.Fatalf("lines=%+v want BND_2", p.Lines)
+	if got := p.Features["BND"]; got.Kind != project.FeaturePolyline || len(got.PointIDs) != 3 {
+		t.Fatalf("features=%+v want BND polyline", p.Features)
 	}
 	if p.Points["2"].Elevation == nil || *p.Points["2"].Elevation != 2 {
 		t.Fatalf("point2=%+v", p.Points["2"])
 	}
 }
 
-func TestImportGeoJSONMultiLineStringAndAutoIDs(t *testing.T) {
+func TestImportGeoJSONPolygonAndAutoIDs(t *testing.T) {
 	p := project.New("test")
-	p.Lines["L1"] = project.Line{ID: "L1", From: "1", To: "2"}
+	p.Features["L1"] = project.Feature{ID: "L1", Kind: project.FeatureLine, PointIDs: []string{"1", "2"}}
 	input := `{
   "type":"FeatureCollection",
   "features":[
-    {"type":"Feature","geometry":{"type":"MultiLineString","coordinates":[[[0,0],[1,0]],[[1,0],[1,1]]]},"properties":{"code":"FENCE"}}
+    {"type":"Feature","geometry":{"type":"Polygon","coordinates":[[[0,0],[1,0],[1,1],[0,0]]]},"properties":{"code":"FENCE"}}
   ]
 }`
 	points, lines, err := Import(strings.NewReader(input), p)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if points != 4 || lines != 2 {
-		t.Fatalf("points=%d lines=%d want 4/2", points, lines)
+	if points != 3 || lines != 1 {
+		t.Fatalf("points=%d lines=%d want 3/1", points, lines)
 	}
-	if _, ok := p.Lines["L2"]; !ok {
-		t.Fatalf("lines=%+v want L2", p.Lines)
-	}
-	if _, ok := p.Lines["L3"]; !ok {
-		t.Fatalf("lines=%+v want L3", p.Lines)
+	if got := p.Features["L2"]; got.Kind != project.FeaturePolygon {
+		t.Fatalf("features=%+v want polygon L2", p.Features)
 	}
 }
 
@@ -171,7 +154,7 @@ func TestGeoJSONRoundTripPreservesLinePointReferences(t *testing.T) {
 	source := project.New("test")
 	source.Points["1"] = geom.Point{ID: "1", Easting: 0, Northing: 0}
 	source.Points["2"] = geom.Point{ID: "2", Easting: 10, Northing: 0}
-	source.Lines["L1"] = project.Line{ID: "L1", From: "1", To: "2", Code: "BOUNDARY", TerrainRole: "drain"}
+	source.Features["L1"] = project.Feature{ID: "L1", Kind: project.FeatureLine, PointIDs: []string{"1", "2"}, Code: "BOUNDARY", TerrainRole: "drain"}
 
 	var out strings.Builder
 	if err := Export(&out, source); err != nil {
@@ -189,11 +172,11 @@ func TestGeoJSONRoundTripPreservesLinePointReferences(t *testing.T) {
 	if len(dest.Points) != 2 {
 		t.Fatalf("point count=%d want 2", len(dest.Points))
 	}
-	if got := dest.Lines["L1"]; got.From != "1" || got.To != "2" {
+	if got := dest.Features["L1"]; got.PointIDs[0] != "1" || got.PointIDs[1] != "2" {
 		t.Fatalf("line=%+v want from=1 to=2", got)
 	}
-	if dest.Lines["L1"].TerrainRole != "drain" {
-		t.Fatalf("terrain role=%q want drain", dest.Lines["L1"].TerrainRole)
+	if dest.Features["L1"].TerrainRole != "drain" {
+		t.Fatalf("terrain role=%q want drain", dest.Features["L1"].TerrainRole)
 	}
 }
 
@@ -211,13 +194,13 @@ func TestImportGeoJSONIsAtomic(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected import error")
 	}
-	if points != 1 || lines != 0 {
+	if points != 0 || lines != 0 {
 		t.Fatalf("points=%d lines=%d", points, lines)
 	}
 	if len(p.Points) != 1 || p.Points["1"].Code != "OLD" {
 		t.Fatalf("project mutated: %+v", p.Points)
 	}
-	if len(p.Lines) != 0 {
-		t.Fatalf("lines mutated: %+v", p.Lines)
+	if len(p.Features) != 0 {
+		t.Fatalf("features mutated: %+v", p.Features)
 	}
 }

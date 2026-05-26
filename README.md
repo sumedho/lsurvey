@@ -21,7 +21,7 @@ see [TUTORIAL.md](/Users/sumedho/Documents/repos/lsurvey/TUTORIAL.md).
 - Project save/load using `.srv` files.
 - Project description stored with the project and shown in the top info area.
 - Coded 2D and 3D points.
-- Stored lines with code and description fields.
+- Stored lines, polylines, and polygons with code, description, and style-group fields.
 - Point and line list panels with filtering and sorting.
 - Command completion hints and command history.
 - Full-screen help with styled sections.
@@ -31,7 +31,8 @@ see [TUTORIAL.md](/Users/sumedho/Documents/repos/lsurvey/TUTORIAL.md).
 - DMS angle display using degree, minute, second, and hundredth-second symbols.
 - Display precision control for coordinates, distances, and elevations.
 - CSV point import/export with a strict header.
-- ASCII DXF export for points, point labels, and lines.
+- ASCII DXF export for points and feature geometry, including group layers and colors.
+- LandXML 1.2 export for metric point and feature geometry.
 - Stored contour generation from elevated points and breaklines.
 
 ## Requirements
@@ -86,11 +87,18 @@ Export a saved project to CSV without opening the TUI:
 go run ./cmd/lsurvey export csv ./job.srv ./points
 ```
 
+Export metric geometry to LandXML without opening the TUI:
+
+```sh
+go run ./cmd/lsurvey export landxml ./job.srv ./job
+```
+
 Output extensions are appended when missing:
 
 - Project saves use `.srv`.
 - DXF exports use `.dxf`.
 - CSV exports use `.csv`.
+- LandXML exports use `.xml`.
 
 ## TUI Layout
 
@@ -104,11 +112,12 @@ The TUI has four main areas:
 - Command input area: fixed at the bottom of the screen.
 
 The command line is the main way to work with the project. Type `help` or press
-`F1` to open the command reference.
+`F1` to open a searchable command browser. Use `/` to filter commands and
+`Enter` to open detailed usage and examples.
 
 ## Keys
 
-- `F1`: open command help.
+- `F1`: open searchable command help.
 - `F2`: toggle the ASCII map view.
 - `/`: start a point filter command.
 - `Tab`: advance the current completion one input at a time. For point IDs
@@ -117,7 +126,7 @@ The command line is the main way to work with the project. Type `help` or press
 - `Up` / `Down`: browse previous commands when the command input is empty.
 - `Alt+s`: cycle point sort field.
 - `Alt+d`: toggle ascending/descending point sort direction.
-- `Esc`: close help or map view.
+- `Esc`: return from help detail, clear a help filter, close help, or close the map view.
 - `Ctrl+C`: quit.
 
 Map keys:
@@ -142,6 +151,11 @@ saveas <file>
 desc <project description>
 precision <0-6>
 units key=value ...
+undo
+redo
+history [limit=<n>]
+history info <n>
+info
 quit
 exit
 ```
@@ -155,6 +169,12 @@ Notes:
   and stores it in the project file.
 - `precision 3` displays coordinates, distances, and elevations to three
   decimal places. The default is 3.
+- `undo` and `redo` navigate successful edits in the current project session.
+  The stacks survive `save` and `saveas`, but are cleared by `new` and `open`.
+- `history` reports the persisted append-only audit trail; undo and redo are
+  themselves recorded audit actions. `history info <n>` displays a listed entry.
+- `info` reports project metadata, stored-object counts, save state, coordinate
+  label, and current undo/redo availability.
 
 ## Point Commands
 
@@ -188,8 +208,11 @@ ID.
 ## Line Commands
 
 ```text
-line add <id> <p1> <p2> [code] [terrain=standard|ridge|drain]
-line edit <id> [from=] [to=] [code=] [desc=] [terrain=none|standard|ridge|drain]
+group add <id> layer=<name> color=<1..255> [desc=<text>]
+line add <id> <p1> <p2> [code] [group=<id>] [terrain=standard|ridge|drain]
+polyline add <id> <p1> <p2> [<pN> ...] [code=<code>] [group=<id>] [terrain=standard|ridge|drain]
+polygon add <id> <p1> <p2> <p3> [<pN> ...] [code=<code>] [group=<id>]
+line edit <id> [from=] [to=] [code=] [desc=] [group=<id>|none] [terrain=none|standard|ridge|drain]
 line del <id>
 line list
 ```
@@ -198,13 +221,15 @@ Examples:
 
 ```text
 line add L1 1 2 BOUNDARY
+group add LOT layer=BOUNDARIES color=1
+polygon add P1 1 2 3 4 code=LOT group=LOT
 line edit L1 from=2 to=3 code=EASE desc="access easement"
 line del L1
 line list
 ```
 
-Line IDs must be unique. `line add` rejects an existing ID, and `line del`
-requires the line to exist.
+Feature IDs must be unique. Lines and polylines may be terrain breaklines;
+polygons are implicitly closed area features and are used for clipping rings.
 
 ## Calculation Commands
 
@@ -345,8 +370,8 @@ Use `index=<n>` to make every nth contour from the base major, or `index=0` to
 disable major contours.
 
 Stored project lines can be used as breaklines. By default, `contour gen` uses
-all stored lines as breaklines. Use `breaklines=none` to generate contours from
-points only, or `breaklines=ids:L1,L2` to use selected lines. Breakline endpoint
+all stored lines and polylines as breaklines. Use `breaklines=none` to generate contours from
+points only, or `breaklines=ids:L1,L2` to use selected line features. Breakline endpoint
 points must have elevations, and selected breaklines must not cross except at
 shared endpoints.
 
@@ -406,6 +431,9 @@ map fit
 help rad
 ```
 
+Within the help browser, use `/` to fuzzy-filter commands, `Enter` to open the
+selected command, and `Esc` to return to results or close help.
+
 ## Import And Export Commands
 
 ```text
@@ -414,6 +442,7 @@ export csv <file>
 import geojson <file>
 export geojson <file>
 export dxf <file>
+export landxml <file>
 ```
 
 Examples:
@@ -424,6 +453,7 @@ export csv points
 import geojson survey
 export geojson survey
 export dxf job
+export landxml job
 ```
 
 CSV import is atomic. If any row is invalid, no imported points are applied to
@@ -449,7 +479,7 @@ DXF export writes:
 
 - Point markers.
 - Point labels.
-- Stored lines in pink.
+- Stored lines, polylines, and polygons; grouped geometry uses its defined DXF layer and ACI color.
 - Stored contour polylines on `CONTOURS` and `CONTOURS_INDEX` layers.
 - Contour elevation labels on `CONTOUR_LABELS` and `CONTOUR_LABELS_INDEX`
   layers, placed along readable contour paths and suppressed where insufficient
@@ -457,6 +487,10 @@ DXF export writes:
 
 Minor contours use AutoCAD color index 8. Index contours use AutoCAD color
 index 1, a heavier DXF lineweight, and a wider polyline width.
+
+LandXML export currently requires `distance=m` and writes COGO points plus
+line, polyline, and closed polygon plan-feature geometry. It does not export
+contours or surfaces.
 
 ## Angle Input
 
@@ -524,7 +558,11 @@ Project files are JSON documents with a `.srv` extension. They store:
 - Contour sets.
 - Traverse state.
 - Grid-to-ground conversion metadata, when used.
-- Command history records.
+- Append-only audit history records for successful project-changing commands,
+  including undo and redo actions.
+
+Undo and redo state is in-memory session state and is not stored in project
+files. Reopening a saved project starts with empty undo and redo stacks.
 
 The file format is intended to remain readable and versioned, but users should
 edit projects through `lsurvey` unless they understand the schema.

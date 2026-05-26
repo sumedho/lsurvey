@@ -11,8 +11,9 @@ import (
 	"lsurvey/internal/geom"
 )
 
-const CurrentSchemaVersion = 5
+const CurrentSchemaVersion = 6
 
+// Line is retained only for decoding project files written before feature geometry.
 type Line struct {
 	ID          string `json:"id"`
 	From        string `json:"from"`
@@ -20,6 +21,36 @@ type Line struct {
 	Code        string `json:"code,omitempty"`
 	Description string `json:"description,omitempty"`
 	TerrainRole string `json:"terrain_role,omitempty"`
+}
+
+const (
+	FeatureLine     = "line"
+	FeaturePolyline = "polyline"
+	FeaturePolygon  = "polygon"
+)
+
+type Group struct {
+	ID          string `json:"id"`
+	Layer       string `json:"layer"`
+	Color       int    `json:"color"`
+	Description string `json:"description,omitempty"`
+}
+
+type Feature struct {
+	ID          string   `json:"id"`
+	Kind        string   `json:"kind"`
+	PointIDs    []string `json:"point_ids"`
+	Code        string   `json:"code,omitempty"`
+	Description string   `json:"description,omitempty"`
+	TerrainRole string   `json:"terrain_role,omitempty"`
+	GroupID     string   `json:"group_id,omitempty"`
+}
+
+type FeatureSegment struct {
+	FeatureID string
+	Index     int
+	From      string
+	To        string
 }
 
 type ContourVertex struct {
@@ -111,7 +142,9 @@ type Project struct {
 	Display       DisplaySettings       `json:"display"`
 	Units         map[string]string     `json:"units"`
 	Points        map[string]geom.Point `json:"points"`
-	Lines         map[string]Line       `json:"lines"`
+	Groups        map[string]Group      `json:"groups,omitempty"`
+	Features      map[string]Feature    `json:"features,omitempty"`
+	LegacyLines   map[string]Line       `json:"lines,omitempty"`
 	ContourSets   map[string]ContourSet `json:"contour_sets,omitempty"`
 	Traverse      *TraverseState        `json:"traverse,omitempty"`
 	GridGround    *GridGroundConversion `json:"grid_ground,omitempty"`
@@ -128,7 +161,8 @@ func New(name string) *Project {
 			"distance": "m",
 		},
 		Points:      map[string]geom.Point{},
-		Lines:       map[string]Line{},
+		Groups:      map[string]Group{},
+		Features:    map[string]Feature{},
 		ContourSets: map[string]ContourSet{},
 		History:     []HistoryRecord{},
 	}
@@ -161,7 +195,17 @@ func Save(path string, p *Project) error {
 }
 
 func (p *Project) AddHistory(command, result string, created []string, err error) {
-	r := HistoryRecord{At: time.Now().UTC(), Command: command, Result: result, Created: created}
+	p.AddHistoryChange(command, result, created, nil, nil, err)
+}
+
+func (p *Project) AddHistoryChange(command, result string, created, updated []string, extra any, err error) {
+	r := HistoryRecord{At: time.Now().UTC(), Command: command, Result: result, Created: created, Updated: updated}
+	if extra != nil {
+		data, marshalErr := json.Marshal(extra)
+		if marshalErr == nil {
+			r.Extra = data
+		}
+	}
 	if err != nil {
 		r.Error = err.Error()
 	}
@@ -200,16 +244,16 @@ func numericPointID(id string) (int, bool) {
 	return n, err == nil
 }
 
-func (p *Project) SortedLines() []Line {
-	lines := make([]Line, 0, len(p.Lines))
-	for _, line := range p.Lines {
-		lines = append(lines, line)
+func (p *Project) SortedFeatures() []Feature {
+	features := make([]Feature, 0, len(p.Features))
+	for _, feature := range p.Features {
+		features = append(features, feature)
 	}
-	sort.Slice(lines, func(i, j int) bool { return LineIDLess(lines[i].ID, lines[j].ID) })
-	return lines
+	sort.Slice(features, func(i, j int) bool { return FeatureIDLess(features[i].ID, features[j].ID) })
+	return features
 }
 
-func LineIDLess(a, b string) bool {
+func FeatureIDLess(a, b string) bool {
 	aPrefix, an, aNumeric := numericSuffixID(a)
 	bPrefix, bn, bNumeric := numericSuffixID(b)
 	if aNumeric && bNumeric && aPrefix == bPrefix {
@@ -245,9 +289,9 @@ func (p *Project) NextPointID() string {
 	return strconv.Itoa(maxID + 1)
 }
 
-func (p *Project) NextLineID() string {
+func (p *Project) NextFeatureID() string {
 	maxID := 0
-	for id := range p.Lines {
+	for id := range p.Features {
 		if len(id) < 2 || id[0] != 'L' {
 			continue
 		}
@@ -257,6 +301,29 @@ func (p *Project) NextLineID() string {
 		}
 	}
 	return fmt.Sprintf("L%d", maxID+1)
+}
+
+func (p *Project) SortedGroups() []Group {
+	groups := make([]Group, 0, len(p.Groups))
+	for _, group := range p.Groups {
+		groups = append(groups, group)
+	}
+	sort.Slice(groups, func(i, j int) bool { return groups[i].ID < groups[j].ID })
+	return groups
+}
+
+func (p *Project) FeatureSegments(feature Feature) []FeatureSegment {
+	if len(feature.PointIDs) < 2 {
+		return nil
+	}
+	out := make([]FeatureSegment, 0, len(feature.PointIDs))
+	for i := 1; i < len(feature.PointIDs); i++ {
+		out = append(out, FeatureSegment{FeatureID: feature.ID, Index: i - 1, From: feature.PointIDs[i-1], To: feature.PointIDs[i]})
+	}
+	if feature.Kind == FeaturePolygon {
+		out = append(out, FeatureSegment{FeatureID: feature.ID, Index: len(feature.PointIDs) - 1, From: feature.PointIDs[len(feature.PointIDs)-1], To: feature.PointIDs[0]})
+	}
+	return out
 }
 
 func (p *Project) ensure() {
@@ -272,9 +339,21 @@ func (p *Project) ensure() {
 	if p.Points == nil {
 		p.Points = map[string]geom.Point{}
 	}
-	if p.Lines == nil {
-		p.Lines = map[string]Line{}
+	if p.Groups == nil {
+		p.Groups = map[string]Group{}
 	}
+	if p.Features == nil {
+		p.Features = map[string]Feature{}
+	}
+	for id, line := range p.LegacyLines {
+		if _, exists := p.Features[id]; !exists {
+			p.Features[id] = Feature{
+				ID: id, Kind: FeatureLine, PointIDs: []string{line.From, line.To},
+				Code: line.Code, Description: line.Description, TerrainRole: line.TerrainRole,
+			}
+		}
+	}
+	p.LegacyLines = nil
 	if p.ContourSets == nil {
 		p.ContourSets = map[string]ContourSet{}
 	}

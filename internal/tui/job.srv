@@ -1,5 +1,5 @@
 {
-  "schema_version": 5,
+  "schema_version": 6,
   "app_version": "dev",
   "name": "test",
   "display": {
@@ -10,6 +10,5 @@
     "distance": "m"
   },
   "points": {},
-  "lines": {},
   "history": []
 }

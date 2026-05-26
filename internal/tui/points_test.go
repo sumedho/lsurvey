@@ -85,8 +85,8 @@ func TestFormatPointRowsUsesConfiguredPrecision(t *testing.T) {
 }
 
 func TestFormatLineRowsIncludesContoursWithoutHeightClipping(t *testing.T) {
-	lines := []project.Line{
-		{ID: "L1", From: "1", To: "2", Code: "BOUNDARY", Description: "edge"},
+	lines := []project.Feature{
+		{ID: "L1", Kind: project.FeatureLine, PointIDs: []string{"1", "2"}, Code: "BOUNDARY", Description: "edge"},
 	}
 	contours := []project.ContourSet{
 		{ID: "C1", Interval: 0.5, Polylines: []project.ContourPolyline{{ID: "PL1"}}},
@@ -102,9 +102,9 @@ func TestFormatLineRowsIncludesContoursWithoutHeightClipping(t *testing.T) {
 func TestFormatLineRowsUsesNaturallySortedProjectLines(t *testing.T) {
 	p := project.New("test")
 	for _, id := range []string{"L10", "L2", "L1"} {
-		p.Lines[id] = project.Line{ID: id}
+		p.Features[id] = project.Feature{ID: id, Kind: project.FeatureLine}
 	}
-	got := FormatLineRows(p.SortedLines(), nil, 2)
+	got := FormatLineRows(p.SortedFeatures(), nil, 2)
 	l1, l2, l10 := strings.Index(got, "L1        "), strings.Index(got, "L2        "), strings.Index(got, "L10       ")
 	if l1 < 0 || l2 < 0 || l10 < 0 || !(l1 < l2 && l2 < l10) {
 		t.Fatalf("line rows not naturally sorted:\n%s", got)

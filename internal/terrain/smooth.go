@@ -114,8 +114,7 @@ func protectedContact(v project.ContourVertex, clip clipRegions, p *project.Proj
 		}
 	}
 	for _, line := range breaklines {
-		a, b := p.Lines[line.ID].From, p.Lines[line.ID].To
-		if pointOnContourSegment(v, contourVertex(p, a), contourVertex(p, b)) {
+		if pointOnContourSegment(v, contourVertex(p, line.From), contourVertex(p, line.To)) {
 			return true
 		}
 	}
@@ -155,7 +154,7 @@ func smoothedPolylineValid(polyline project.ContourPolyline, clip clipRegions, p
 			}
 		}
 		for _, line := range breaklines {
-			c, d := contourVertex(p, p.Lines[line.ID].From), contourVertex(p, p.Lines[line.ID].To)
+			c, d := contourVertex(p, line.From), contourVertex(p, line.To)
 			if contourSegmentsIntersect(a, b, c, d) &&
 				!pointOnContourSegment(a, c, d) && !pointOnContourSegment(b, c, d) {
 				return false

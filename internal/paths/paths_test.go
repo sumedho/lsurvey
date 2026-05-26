@@ -57,3 +57,11 @@ func TestGeoJSONAppendsGeoJSON(t *testing.T) {
 		}
 	}
 }
+
+func TestLandXMLAppendsXML(t *testing.T) {
+	for in, want := range map[string]string{"job": "job.xml", "job.xml": "job.xml", "JOB.XML": "JOB.XML", "": ""} {
+		if got := LandXML(in); got != want {
+			t.Fatalf("LandXML(%q)=%q want %q", in, got, want)
+		}
+	}
+}

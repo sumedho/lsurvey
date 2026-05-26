@@ -8,13 +8,13 @@ import (
 
 	"lsurvey/internal/geom"
 	"lsurvey/internal/project"
-	"lsurvey/internal/terrain"
 )
 
 type Result struct {
 	Message string
 	Created []string
 	Updated []string
+	Changed bool
 }
 
 func Execute(p *project.Project, command string) (Result, error) {
@@ -31,16 +31,22 @@ func Execute(p *project.Project, command string) (Result, error) {
 		result, err = execPoint(p, fields)
 	case "line":
 		result, err = execLine(p, fields)
+	case "polyline":
+		result, err = execOrderedFeature(p, fields, project.FeaturePolyline)
+	case "polygon":
+		result, err = execOrderedFeature(p, fields, project.FeaturePolygon)
+	case "group":
+		result, err = execGroup(p, fields)
 	case "inverse":
-		return execInverse(p, fields)
+		result, err = execInverse(p, fields)
 	case "angle":
-		return execAngle(p, fields)
+		result, err = execAngle(p, fields)
 	case "close":
-		return execClose(p, fields)
+		result, err = execClose(p, fields)
 	case "bearing":
-		return execBearing(p, fields)
+		result, err = execBearing(p, fields)
 	case "dist":
-		return execDistance(p, fields)
+		result, err = execDistance(p, fields)
 	case "rad":
 		result, err = execRad(p, fields)
 	case "rad3d":
@@ -54,23 +60,24 @@ func Execute(p *project.Project, command string) (Result, error) {
 	case "resect":
 		result, err = execResect(p, fields)
 	case "shift":
-		return execShift(p, fields)
+		result, err = execShift(p, fields)
 	case "rotate":
-		return execRotate(p, fields)
+		result, err = execRotate(p, fields)
 	case "scale":
-		return execScale(p, fields)
+		result, err = execScale(p, fields)
 	case "transform":
-		return execTransform(p, fields)
+		result, err = execTransform(p, fields)
 	case "trav":
 		result, err = execTraverse(p, fields)
 	case "contour":
-		return execContour(p, fields)
+		result, err = execContour(p, fields)
 	case "units":
-		return execUnits(p, fields)
+		result, err = execUnits(p, fields)
 	default:
 		return Result{}, fmt.Errorf("unknown command %q", fields[0])
 	}
 	if err == nil {
+		result.Changed = commandChangesProject(fields, result)
 		markContoursStaleAfterCommand(p, fields, result)
 	}
 	return result, err
@@ -78,8 +85,36 @@ func Execute(p *project.Project, command string) (Result, error) {
 
 func ExecuteAndRecord(p *project.Project, command string) (Result, error) {
 	result, err := Execute(p, command)
-	p.AddHistory(command, result.Message, result.Created, err)
+	if err == nil && result.Changed {
+		p.AddHistoryChange(command, result.Message, result.Created, result.Updated, nil, nil)
+	}
 	return result, err
+}
+
+func commandChangesProject(fields []string, result Result) bool {
+	switch fields[0] {
+	case "pt":
+		return len(fields) > 1 && fields[1] != "list"
+	case "line":
+		if len(fields) > 1 && fields[1] == "list" {
+			return false
+		}
+		if len(fields) > 1 && fields[1] == "gen" {
+			return len(result.Created) > 0
+		}
+		return true
+	case "polyline", "polygon", "group":
+		return len(fields) > 1 && fields[1] != "list" && fields[1] != "info"
+	case "rad", "rad3d", "midpoint", "offset", "intersect", "resect",
+		"shift", "rotate", "scale", "units":
+		return true
+	case "trav":
+		return len(fields) > 1 && fields[1] != "show"
+	case "contour":
+		return len(fields) > 1 && fields[1] != "list" && fields[1] != "info"
+	default:
+		return false
+	}
 }
 
 func execPoint(p *project.Project, f []string) (Result, error) {
@@ -89,7 +124,7 @@ func execPoint(p *project.Project, f []string) (Result, error) {
 	switch f[1] {
 	case "add":
 		if len(f) < 5 {
-			return Result{}, fmt.Errorf("usage: pt add <id> <east> <north> [elev] [code]")
+			return Result{}, fmt.Errorf("usage: pt add <id> <east> <north> [elev] [code] [group=<id>]")
 		}
 		id := f[2]
 		if _, ok := p.Points[id]; ok {
@@ -105,21 +140,33 @@ func execPoint(p *project.Project, f []string) (Result, error) {
 		}
 		var z *float64
 		code := ""
-		if len(f) >= 6 {
-			if v, err := strconv.ParseFloat(f[5], 64); err == nil {
+		groupID := ""
+		i := 5
+		if i < len(f) {
+			if v, err := strconv.ParseFloat(f[i], 64); err == nil {
 				z = &v
-				if len(f) >= 7 {
-					code = f[6]
-				}
-			} else {
-				code = f[5]
+				i++
 			}
 		}
-		p.Points[id] = geom.Point{ID: id, Easting: e, Northing: n, Elevation: z, Code: code}
+		if i < len(f) && !strings.Contains(f[i], "=") {
+			code = f[i]
+			i++
+		}
+		for ; i < len(f); i++ {
+			k, v, ok := strings.Cut(f[i], "=")
+			if !ok || k != "group" {
+				return Result{}, fmt.Errorf("usage: pt add <id> <east> <north> [elev] [code] [group=<id>]")
+			}
+			if err := requireGroup(p, v); err != nil {
+				return Result{}, err
+			}
+			groupID = v
+		}
+		p.Points[id] = geom.Point{ID: id, Easting: e, Northing: n, Elevation: z, Code: code, GroupID: groupID}
 		return Result{Message: "added point " + id, Created: []string{"point:" + id}}, nil
 	case "edit":
 		if len(f) < 4 {
-			return Result{}, fmt.Errorf("usage: pt edit <id> [east=] [north=] [elev=] [code=] [desc=]")
+			return Result{}, fmt.Errorf("usage: pt edit <id> [east=] [north=] [elev=] [code=] [desc=] [group=<id>|none]")
 		}
 		id := f[2]
 		pt, ok := p.Points[id]
@@ -154,6 +201,13 @@ func execPoint(p *project.Project, f []string) (Result, error) {
 				pt.Code = v
 			case "desc":
 				pt.Description = v
+			case "group":
+				if v == "none" {
+					v = ""
+				} else if err := requireGroup(p, v); err != nil {
+					return Result{}, err
+				}
+				pt.GroupID = v
 			default:
 				return Result{}, fmt.Errorf("unknown point field %q", k)
 			}
@@ -168,9 +222,11 @@ func execPoint(p *project.Project, f []string) (Result, error) {
 		if _, ok := p.Points[id]; !ok {
 			return Result{}, fmt.Errorf("point %q not found", id)
 		}
-		for _, line := range p.Lines {
-			if line.From == id || line.To == id {
-				return Result{}, fmt.Errorf("point %q is used by line %q", id, line.ID)
+		for _, feature := range p.Features {
+			for _, pointID := range feature.PointIDs {
+				if pointID == id {
+					return Result{}, fmt.Errorf("point %q is used by feature %q", id, feature.ID)
+				}
 			}
 		}
 		delete(p.Points, id)
@@ -189,14 +245,13 @@ func execPoint(p *project.Project, f []string) (Result, error) {
 		delete(p.Points, f[2])
 		pt.ID = f[3]
 		p.Points[f[3]] = pt
-		for id, line := range p.Lines {
-			if line.From == f[2] {
-				line.From = f[3]
+		for id, feature := range p.Features {
+			for i, pointID := range feature.PointIDs {
+				if pointID == f[2] {
+					feature.PointIDs[i] = f[3]
+				}
 			}
-			if line.To == f[2] {
-				line.To = f[3]
-			}
-			p.Lines[id] = line
+			p.Features[id] = feature
 		}
 		return Result{Message: "renamed point " + f[2] + " to " + f[3], Updated: []string{"point:" + f[3]}}, nil
 	case "list":
@@ -213,55 +268,69 @@ func execLine(p *project.Project, f []string) (Result, error) {
 	switch f[1] {
 	case "add":
 		if len(f) < 5 {
-			return Result{}, fmt.Errorf("usage: line add <id> <p1> <p2> [code] [terrain=standard|ridge|drain]")
+			return Result{}, fmt.Errorf("usage: line add <id> <p1> <p2> [code] [group=<id>] [terrain=standard|ridge|drain]")
 		}
-		if _, ok := p.Lines[f[2]]; ok {
-			return Result{}, fmt.Errorf("line %q already exists", f[2])
-		}
-		if _, ok := p.Points[f[3]]; !ok {
-			return Result{}, fmt.Errorf("point %q not found", f[3])
-		}
-		if _, ok := p.Points[f[4]]; !ok {
-			return Result{}, fmt.Errorf("point %q not found", f[4])
-		}
-		line := project.Line{ID: f[2], From: f[3], To: f[4]}
+		feature := project.Feature{ID: f[2], Kind: project.FeatureLine, PointIDs: []string{f[3], f[4]}}
 		for _, arg := range f[5:] {
 			k, v, ok := strings.Cut(arg, "=")
 			if !ok {
-				if line.Code != "" {
-					return Result{}, fmt.Errorf("usage: line add <id> <p1> <p2> [code] [terrain=standard|ridge|drain]")
+				if feature.Code != "" {
+					return Result{}, fmt.Errorf("usage: line add <id> <p1> <p2> [code] [group=<id>] [terrain=standard|ridge|drain]")
 				}
-				line.Code = arg
+				feature.Code = arg
 				continue
 			}
-			if k != "terrain" || !validTerrainRole(v) || v == "none" {
-				return Result{}, fmt.Errorf("terrain must be standard, ridge, or drain")
+			switch k {
+			case "terrain":
+				if !validTerrainRole(v) || v == "none" {
+					return Result{}, fmt.Errorf("terrain must be standard, ridge, or drain")
+				}
+				feature.TerrainRole = v
+			case "group":
+				if err := requireGroup(p, v); err != nil {
+					return Result{}, err
+				}
+				feature.GroupID = v
+			default:
+				return Result{}, fmt.Errorf("unknown line field %q", k)
 			}
-			line.TerrainRole = v
 		}
-		p.Lines[f[2]] = line
+		if err := storeFeature(p, feature); err != nil {
+			return Result{}, err
+		}
 		return Result{Message: "added line " + f[2], Created: []string{"line:" + f[2]}}, nil
 	case "gen":
-		if len(f) != 3 {
-			return Result{}, fmt.Errorf("usage: line gen <code>")
+		if len(f) < 3 || len(f) > 4 {
+			return Result{}, fmt.Errorf("usage: line gen <code> [group=<id>]")
 		}
-		return genLinesByCode(p, f[2])
+		groupID := ""
+		if len(f) == 4 {
+			k, v, ok := strings.Cut(f[3], "=")
+			if !ok || k != "group" {
+				return Result{}, fmt.Errorf("usage: line gen <code> [group=<id>]")
+			}
+			if err := requireGroup(p, v); err != nil {
+				return Result{}, err
+			}
+			groupID = v
+		}
+		return genLinesByCode(p, f[2], groupID)
 	case "del":
 		if len(f) != 3 {
 			return Result{}, fmt.Errorf("usage: line del <id>")
 		}
-		if _, ok := p.Lines[f[2]]; !ok {
+		if feature, ok := p.Features[f[2]]; !ok || feature.Kind != project.FeatureLine {
 			return Result{}, fmt.Errorf("line %q not found", f[2])
 		}
-		delete(p.Lines, f[2])
+		delete(p.Features, f[2])
 		return Result{Message: "deleted line " + f[2], Updated: []string{"line:" + f[2]}}, nil
 	case "edit":
 		if len(f) < 4 {
-			return Result{}, fmt.Errorf("usage: line edit <id> [from=] [to=] [code=] [desc=] [terrain=none|standard|ridge|drain]")
+			return Result{}, fmt.Errorf("usage: line edit <id> [from=] [to=] [code=] [desc=] [group=<id>|none] [terrain=none|standard|ridge|drain]")
 		}
 		id := f[2]
-		line, ok := p.Lines[id]
-		if !ok {
+		feature, ok := p.Features[id]
+		if !ok || feature.Kind != project.FeatureLine {
 			return Result{}, fmt.Errorf("line %q not found", id)
 		}
 		for _, arg := range f[3:] {
@@ -271,19 +340,20 @@ func execLine(p *project.Project, f []string) (Result, error) {
 			}
 			switch k {
 			case "from":
-				if _, ok := p.Points[v]; !ok {
-					return Result{}, fmt.Errorf("point %q not found", v)
-				}
-				line.From = v
+				feature.PointIDs[0] = v
 			case "to":
-				if _, ok := p.Points[v]; !ok {
-					return Result{}, fmt.Errorf("point %q not found", v)
-				}
-				line.To = v
+				feature.PointIDs[1] = v
 			case "code":
-				line.Code = v
+				feature.Code = v
 			case "desc":
-				line.Description = v
+				feature.Description = v
+			case "group":
+				if v == "none" {
+					v = ""
+				} else if err := requireGroup(p, v); err != nil {
+					return Result{}, err
+				}
+				feature.GroupID = v
 			case "terrain":
 				if !validTerrainRole(v) {
 					return Result{}, fmt.Errorf("terrain must be none, standard, ridge, or drain")
@@ -291,12 +361,15 @@ func execLine(p *project.Project, f []string) (Result, error) {
 				if v == "none" {
 					v = ""
 				}
-				line.TerrainRole = v
+				feature.TerrainRole = v
 			default:
 				return Result{}, fmt.Errorf("unknown line field %q", k)
 			}
 		}
-		p.Lines[id] = line
+		if err := validateFeature(p, feature); err != nil {
+			return Result{}, err
+		}
+		p.Features[id] = feature
 		return Result{Message: "updated line " + id, Updated: []string{"line:" + id}}, nil
 	case "intersect":
 		if len(f) < 8 || f[6] != "as" {
@@ -323,10 +396,12 @@ func execLine(p *project.Project, f []string) (Result, error) {
 		if !ok {
 			return Result{}, fmt.Errorf("lines are parallel")
 		}
-		p.Points[pt.ID] = pt
+		if err := storeCreatedPoint(p, pt); err != nil {
+			return Result{}, err
+		}
 		return Result{Message: "created point " + pt.ID, Created: []string{"point:" + pt.ID}}, nil
 	case "list":
-		return Result{Message: fmt.Sprintf("%d lines", len(p.Lines))}, nil
+		return Result{Message: fmt.Sprintf("%d lines", countFeatures(p, project.FeatureLine))}, nil
 	default:
 		return Result{}, fmt.Errorf("unknown line subcommand %q", f[1])
 	}
@@ -336,7 +411,7 @@ func validTerrainRole(role string) bool {
 	return role == "none" || role == "standard" || role == "ridge" || role == "drain"
 }
 
-func genLinesByCode(p *project.Project, code string) (Result, error) {
+func genLinesByCode(p *project.Project, code, groupID string) (Result, error) {
 	points := p.SortedPoints()
 	matching := make([]geom.Point, 0, len(points))
 	for _, pt := range points {
@@ -357,8 +432,8 @@ func genLinesByCode(p *project.Project, code string) (Result, error) {
 			skipped++
 			continue
 		}
-		id := p.NextLineID()
-		p.Lines[id] = project.Line{ID: id, From: from, To: to, Code: code}
+		id := p.NextFeatureID()
+		p.Features[id] = project.Feature{ID: id, Kind: project.FeatureLine, PointIDs: []string{from, to}, Code: code, GroupID: groupID}
 		created = append(created, "line:"+id)
 	}
 	return Result{
@@ -368,12 +443,318 @@ func genLinesByCode(p *project.Project, code string) (Result, error) {
 }
 
 func hasLineBetween(p *project.Project, a, b string) bool {
-	for _, line := range p.Lines {
-		if (line.From == a && line.To == b) || (line.From == b && line.To == a) {
+	for _, feature := range p.Features {
+		if feature.Kind == project.FeatureLine && ((feature.PointIDs[0] == a && feature.PointIDs[1] == b) || (feature.PointIDs[0] == b && feature.PointIDs[1] == a)) {
 			return true
 		}
 	}
 	return false
+}
+
+func execGroup(p *project.Project, f []string) (Result, error) {
+	if len(f) < 2 {
+		return Result{}, fmt.Errorf("group requires subcommand")
+	}
+	switch f[1] {
+	case "add":
+		if len(f) < 5 {
+			return Result{}, fmt.Errorf("usage: group add <id> layer=<name> color=<1..255> [desc=<text>]")
+		}
+		if _, exists := p.Groups[f[2]]; exists {
+			return Result{}, fmt.Errorf("group %q already exists", f[2])
+		}
+		group := project.Group{ID: f[2]}
+		if err := applyGroupFields(p, &group, f[3:]); err != nil {
+			return Result{}, err
+		}
+		if group.Layer == "" || group.Color == 0 {
+			return Result{}, fmt.Errorf("group requires layer and color")
+		}
+		p.Groups[group.ID] = group
+		return Result{Message: "added group " + group.ID, Created: []string{"group:" + group.ID}}, nil
+	case "edit":
+		if len(f) < 4 {
+			return Result{}, fmt.Errorf("usage: group edit <id> [layer=<name>] [color=<1..255>] [desc=<text>]")
+		}
+		group, ok := p.Groups[f[2]]
+		if !ok {
+			return Result{}, fmt.Errorf("group %q not found", f[2])
+		}
+		if err := applyGroupFields(p, &group, f[3:]); err != nil {
+			return Result{}, err
+		}
+		p.Groups[group.ID] = group
+		return Result{Message: "updated group " + group.ID, Updated: []string{"group:" + group.ID}}, nil
+	case "del":
+		if len(f) != 3 {
+			return Result{}, fmt.Errorf("usage: group del <id>")
+		}
+		if _, ok := p.Groups[f[2]]; !ok {
+			return Result{}, fmt.Errorf("group %q not found", f[2])
+		}
+		for _, pt := range p.Points {
+			if pt.GroupID == f[2] {
+				return Result{}, fmt.Errorf("group %q is used by point %q", f[2], pt.ID)
+			}
+		}
+		for _, feature := range p.Features {
+			if feature.GroupID == f[2] {
+				return Result{}, fmt.Errorf("group %q is used by feature %q", f[2], feature.ID)
+			}
+		}
+		delete(p.Groups, f[2])
+		return Result{Message: "deleted group " + f[2], Updated: []string{"group:" + f[2]}}, nil
+	case "list":
+		return Result{Message: fmt.Sprintf("%d groups", len(p.Groups))}, nil
+	case "info":
+		if len(f) != 3 {
+			return Result{}, fmt.Errorf("usage: group info <id>")
+		}
+		group, ok := p.Groups[f[2]]
+		if !ok {
+			return Result{}, fmt.Errorf("group %q not found", f[2])
+		}
+		return Result{Message: fmt.Sprintf("%s layer=%s color=%d desc=%s", group.ID, group.Layer, group.Color, group.Description)}, nil
+	default:
+		return Result{}, fmt.Errorf("unknown group subcommand %q", f[1])
+	}
+}
+
+func applyGroupFields(p *project.Project, group *project.Group, fields []string) error {
+	for _, arg := range fields {
+		k, v, ok := strings.Cut(arg, "=")
+		if !ok {
+			return fmt.Errorf("group argument %q must be key=value", arg)
+		}
+		switch k {
+		case "layer":
+			if strings.TrimSpace(v) == "" {
+				return fmt.Errorf("group layer cannot be empty")
+			}
+			for id, existing := range p.Groups {
+				if id != group.ID && strings.EqualFold(existing.Layer, v) {
+					return fmt.Errorf("group layer %q already exists", v)
+				}
+			}
+			group.Layer = v
+		case "color":
+			color, err := strconv.Atoi(v)
+			if err != nil || color < 1 || color > 255 {
+				return fmt.Errorf("group color must be between 1 and 255")
+			}
+			group.Color = color
+		case "desc":
+			group.Description = v
+		default:
+			return fmt.Errorf("unknown group field %q", k)
+		}
+	}
+	return nil
+}
+
+func execOrderedFeature(p *project.Project, f []string, kind string) (Result, error) {
+	name := kind
+	if len(f) < 2 {
+		return Result{}, fmt.Errorf("%s requires subcommand", name)
+	}
+	switch f[1] {
+	case "add":
+		min := 2
+		if kind == project.FeaturePolygon {
+			min = 3
+		}
+		if len(f) < 3+min {
+			return Result{}, fmt.Errorf("usage: %s add <id> <p1> <%s> [<pN> ...] [code=<code>] [desc=<text>] [group=<id>] [terrain=standard|ridge|drain]", name, map[bool]string{true: "p3", false: "p2"}[kind == project.FeaturePolygon])
+		}
+		feature := project.Feature{ID: f[2], Kind: kind}
+		i := 3
+		for i < len(f) && !strings.Contains(f[i], "=") {
+			feature.PointIDs = append(feature.PointIDs, f[i])
+			i++
+		}
+		if err := applyFeatureFields(p, &feature, f[i:], kind != project.FeaturePolygon); err != nil {
+			return Result{}, err
+		}
+		if err := storeFeature(p, feature); err != nil {
+			return Result{}, err
+		}
+		return Result{Message: "added " + name + " " + feature.ID, Created: []string{name + ":" + feature.ID}}, nil
+	case "edit":
+		if len(f) < 4 {
+			return Result{}, fmt.Errorf("usage: %s edit <id> [points=<p1,p2,...>] [code=] [desc=] [group=<id>|none] [terrain=none|standard|ridge|drain]", name)
+		}
+		feature, ok := p.Features[f[2]]
+		if !ok || feature.Kind != kind {
+			return Result{}, fmt.Errorf("%s %q not found", name, f[2])
+		}
+		if err := applyFeatureFields(p, &feature, f[3:], kind != project.FeaturePolygon); err != nil {
+			return Result{}, err
+		}
+		if err := validateFeature(p, feature); err != nil {
+			return Result{}, err
+		}
+		p.Features[feature.ID] = feature
+		return Result{Message: "updated " + name + " " + feature.ID, Updated: []string{name + ":" + feature.ID}}, nil
+	case "del":
+		if len(f) != 3 {
+			return Result{}, fmt.Errorf("usage: %s del <id>", name)
+		}
+		feature, ok := p.Features[f[2]]
+		if !ok || feature.Kind != kind {
+			return Result{}, fmt.Errorf("%s %q not found", name, f[2])
+		}
+		delete(p.Features, f[2])
+		return Result{Message: "deleted " + name + " " + f[2], Updated: []string{name + ":" + f[2]}}, nil
+	case "list":
+		return Result{Message: fmt.Sprintf("%d %ss", countFeatures(p, kind), name)}, nil
+	case "info":
+		if len(f) != 3 {
+			return Result{}, fmt.Errorf("usage: %s info <id>", name)
+		}
+		feature, ok := p.Features[f[2]]
+		if !ok || feature.Kind != kind {
+			return Result{}, fmt.Errorf("%s %q not found", name, f[2])
+		}
+		return Result{Message: fmt.Sprintf("%s points=%s code=%s group=%s", feature.ID, strings.Join(feature.PointIDs, ","), feature.Code, feature.GroupID)}, nil
+	default:
+		return Result{}, fmt.Errorf("unknown %s subcommand %q", name, f[1])
+	}
+}
+
+func applyFeatureFields(p *project.Project, feature *project.Feature, fields []string, allowTerrain bool) error {
+	for _, arg := range fields {
+		k, v, ok := strings.Cut(arg, "=")
+		if !ok {
+			return fmt.Errorf("feature argument %q must be key=value", arg)
+		}
+		switch k {
+		case "points":
+			feature.PointIDs = strings.Split(v, ",")
+		case "code":
+			feature.Code = v
+		case "desc":
+			feature.Description = v
+		case "group":
+			if v == "none" {
+				v = ""
+			} else if err := requireGroup(p, v); err != nil {
+				return err
+			}
+			feature.GroupID = v
+		case "terrain":
+			if !allowTerrain {
+				return fmt.Errorf("polygons do not support terrain roles")
+			}
+			if !validTerrainRole(v) {
+				return fmt.Errorf("terrain must be none, standard, ridge, or drain")
+			}
+			if v == "none" {
+				v = ""
+			}
+			feature.TerrainRole = v
+		default:
+			return fmt.Errorf("unknown feature field %q", k)
+		}
+	}
+	return nil
+}
+
+func storeFeature(p *project.Project, feature project.Feature) error {
+	if _, ok := p.Features[feature.ID]; ok {
+		return fmt.Errorf("feature %q already exists", feature.ID)
+	}
+	if err := validateFeature(p, feature); err != nil {
+		return err
+	}
+	p.Features[feature.ID] = feature
+	return nil
+}
+
+func validateFeature(p *project.Project, feature project.Feature) error {
+	min := 2
+	if feature.Kind == project.FeaturePolygon {
+		min = 3
+	}
+	if len(feature.PointIDs) < min || feature.Kind == project.FeatureLine && len(feature.PointIDs) != 2 {
+		return fmt.Errorf("%s %q has invalid point count", feature.Kind, feature.ID)
+	}
+	for i, id := range feature.PointIDs {
+		if _, ok := p.Points[id]; !ok {
+			return fmt.Errorf("point %q not found", id)
+		}
+		if i > 0 && id == feature.PointIDs[i-1] {
+			return fmt.Errorf("%s %q has duplicate consecutive points", feature.Kind, feature.ID)
+		}
+	}
+	if feature.Kind == project.FeaturePolygon {
+		if feature.PointIDs[0] == feature.PointIDs[len(feature.PointIDs)-1] {
+			return fmt.Errorf("polygon closure is implicit; do not repeat the first point")
+		}
+		if polygonInvalid(p, feature.PointIDs) {
+			return fmt.Errorf("polygon %q is zero-area or self-intersecting", feature.ID)
+		}
+	}
+	if feature.GroupID != "" {
+		return requireGroup(p, feature.GroupID)
+	}
+	return nil
+}
+
+func polygonInvalid(p *project.Project, ids []string) bool {
+	area := 0.0
+	for i := range ids {
+		a, b := p.Points[ids[i]], p.Points[ids[(i+1)%len(ids)]]
+		area += a.Easting*b.Northing - b.Easting*a.Northing
+	}
+	if math.Abs(area) < 1e-9 {
+		return true
+	}
+	for i := range ids {
+		a, b := p.Points[ids[i]], p.Points[ids[(i+1)%len(ids)]]
+		for j := i + 1; j < len(ids); j++ {
+			if j == i+1 || i == 0 && j == len(ids)-1 {
+				continue
+			}
+			c, d := p.Points[ids[j]], p.Points[ids[(j+1)%len(ids)]]
+			if segmentsCross(a, b, c, d) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+func segmentsCross(a, b, c, d geom.Point) bool {
+	orient := func(p, q, r geom.Point) float64 {
+		return (q.Easting-p.Easting)*(r.Northing-p.Northing) - (q.Northing-p.Northing)*(r.Easting-p.Easting)
+	}
+	onSegment := func(p, q, r geom.Point) bool {
+		return q.Easting >= math.Min(p.Easting, r.Easting)-1e-9 && q.Easting <= math.Max(p.Easting, r.Easting)+1e-9 &&
+			q.Northing >= math.Min(p.Northing, r.Northing)-1e-9 && q.Northing <= math.Max(p.Northing, r.Northing)+1e-9
+	}
+	o1, o2, o3, o4 := orient(a, b, c), orient(a, b, d), orient(c, d, a), orient(c, d, b)
+	if math.Abs(o1) <= 1e-9 && onSegment(a, c, b) || math.Abs(o2) <= 1e-9 && onSegment(a, d, b) ||
+		math.Abs(o3) <= 1e-9 && onSegment(c, a, d) || math.Abs(o4) <= 1e-9 && onSegment(c, b, d) {
+		return true
+	}
+	return (o1 > 0) != (o2 > 0) && (o3 > 0) != (o4 > 0)
+}
+
+func requireGroup(p *project.Project, id string) error {
+	if _, ok := p.Groups[id]; !ok {
+		return fmt.Errorf("group %q not found", id)
+	}
+	return nil
+}
+
+func countFeatures(p *project.Project, kind string) int {
+	count := 0
+	for _, feature := range p.Features {
+		if feature.Kind == kind {
+			count++
+		}
+	}
+	return count
 }
 
 func execInverse(p *project.Project, f []string) (Result, error) {
@@ -537,7 +918,9 @@ func execRad(p *project.Project, f []string) (Result, error) {
 	id := f[i+1]
 	code := optional(f, i+2)
 	pt := geom.Radiate(from, az, dist, dz, id, code)
-	p.Points[id] = pt
+	if err := storeCreatedPoint(p, pt); err != nil {
+		return Result{}, err
+	}
 	return Result{Message: "created point " + id, Created: []string{"point:" + id}}, nil
 }
 
@@ -579,7 +962,9 @@ func execRad3D(p *project.Project, f []string) (Result, error) {
 	id := f[i+1]
 	code := optional(f, i+2)
 	pt := geom.Radiate3D(from, az, slopeDist, zenith, id, code)
-	p.Points[id] = pt
+	if err := storeCreatedPoint(p, pt); err != nil {
+		return Result{}, err
+	}
 	return Result{Message: "created point " + id, Created: []string{"point:" + id}}, nil
 }
 
@@ -596,7 +981,9 @@ func execMidpoint(p *project.Project, f []string) (Result, error) {
 		return Result{}, err
 	}
 	pt := geom.Midpoint(p1, p2, f[4], optional(f, 5))
-	p.Points[pt.ID] = pt
+	if err := storeCreatedPoint(p, pt); err != nil {
+		return Result{}, err
+	}
 	return Result{Message: "created point " + pt.ID, Created: []string{"point:" + pt.ID}}, nil
 }
 
@@ -628,13 +1015,15 @@ func execOffsetFromPoints(p *project.Project, f []string) (Result, error) {
 		return Result{}, err
 	}
 	pt := geom.Offset(p1, p2, off, chainage, f[6], optional(f, 7))
-	p.Points[pt.ID] = pt
+	if err := storeCreatedPoint(p, pt); err != nil {
+		return Result{}, err
+	}
 	return Result{Message: "created point " + pt.ID, Created: []string{"point:" + pt.ID}}, nil
 }
 
 func execOffsetFromLine(p *project.Project, f []string) (Result, error) {
-	line, ok := p.Lines[f[1]]
-	if !ok {
+	line, ok := p.Features[f[1]]
+	if !ok || line.Kind != project.FeatureLine {
 		return Result{}, fmt.Errorf("line %q not found", f[1])
 	}
 	off, err := parseFloat("offset", f[2])
@@ -645,16 +1034,18 @@ func execOffsetFromLine(p *project.Project, f []string) (Result, error) {
 	if err != nil {
 		return Result{}, err
 	}
-	p1, err := point(p, line.From)
+	p1, err := point(p, line.PointIDs[0])
 	if err != nil {
 		return Result{}, err
 	}
-	p2, err := point(p, line.To)
+	p2, err := point(p, line.PointIDs[1])
 	if err != nil {
 		return Result{}, err
 	}
 	pt := geom.Offset(p1, p2, off, chainage, f[5], optional(f, 6))
-	p.Points[pt.ID] = pt
+	if err := storeCreatedPoint(p, pt); err != nil {
+		return Result{}, err
+	}
 	return Result{Message: "created point " + pt.ID, Created: []string{"point:" + pt.ID}}, nil
 }
 
@@ -692,7 +1083,9 @@ func execIntersect(p *project.Project, f []string) (Result, error) {
 		if !ok {
 			return Result{}, fmt.Errorf("bearings are parallel")
 		}
-		p.Points[pt.ID] = pt
+		if err := storeCreatedPoint(p, pt); err != nil {
+			return Result{}, err
+		}
 		return Result{Message: "created point " + pt.ID, Created: []string{"point:" + pt.ID}}, nil
 	case "distance-distance":
 		if len(f) < 10 || f[8] != "as" {
@@ -721,7 +1114,9 @@ func execIntersect(p *project.Project, f []string) (Result, error) {
 		if !ok {
 			return Result{}, fmt.Errorf("circles do not intersect")
 		}
-		p.Points[pt.ID] = pt
+		if err := storeCreatedPoint(p, pt); err != nil {
+			return Result{}, err
+		}
 		return Result{Message: "created point " + pt.ID, Created: []string{"point:" + pt.ID}}, nil
 	case "bearing-distance":
 		if len(f) < 10 {
@@ -756,7 +1151,9 @@ func execIntersect(p *project.Project, f []string) (Result, error) {
 		if !ok {
 			return Result{}, fmt.Errorf("bearing and distance do not intersect")
 		}
-		p.Points[pt.ID] = pt
+		if err := storeCreatedPoint(p, pt); err != nil {
+			return Result{}, err
+		}
 		return Result{Message: "created point " + pt.ID, Created: []string{"point:" + pt.ID}}, nil
 	default:
 		return Result{}, fmt.Errorf("unknown intersect type %q", f[1])
@@ -794,7 +1191,9 @@ func execResect(p *project.Project, f []string) (Result, error) {
 	if !ok {
 		return Result{}, fmt.Errorf("resection bearings are degenerate")
 	}
-	p.Points[pt.ID] = pt
+	if err := storeCreatedPoint(p, pt); err != nil {
+		return Result{}, err
+	}
 	return Result{Message: "created point " + pt.ID, Created: []string{"point:" + pt.ID}}, nil
 }
 
@@ -1111,383 +1510,6 @@ func execTransform(p *project.Project, f []string) (Result, error) {
 	)}, nil
 }
 
-func execTraverse(p *project.Project, f []string) (Result, error) {
-	if len(f) < 2 {
-		return Result{}, fmt.Errorf("trav requires subcommand")
-	}
-	switch f[1] {
-	case "start":
-		if len(f) != 3 {
-			return Result{}, fmt.Errorf("usage: trav start <point>")
-		}
-		if _, err := point(p, f[2]); err != nil {
-			return Result{}, err
-		}
-		p.Traverse = &project.TraverseState{Start: f[2], Current: f[2], LegPointIDs: []string{}}
-		return Result{Message: "started traverse at " + f[2]}, nil
-	case "leg":
-		if p.Traverse == nil {
-			return Result{}, fmt.Errorf("no active traverse")
-		}
-		if len(f) < 4 {
-			return Result{}, fmt.Errorf("usage: trav leg <azimuth|bearing> <distance> [vdiff <delta>] [code]")
-		}
-		from, err := point(p, p.Traverse.Current)
-		if err != nil {
-			return Result{}, err
-		}
-		az, used, err := parseAngleTokens(f[2:])
-		if err != nil {
-			return Result{}, err
-		}
-		i := 2 + used
-		dist, err := parseFloat("distance", f[i])
-		if err != nil {
-			return Result{}, err
-		}
-		i++
-		var dz *float64
-		if i < len(f) && (f[i] == "vdiff" || f[i] == "dz") {
-			if i+1 >= len(f) {
-				return Result{}, fmt.Errorf("%s requires value", f[i])
-			}
-			v, err := parseFloat(f[i], f[i+1])
-			if err != nil {
-				return Result{}, err
-			}
-			dz = &v
-			i += 2
-		}
-		code := optional(f, i)
-		id := p.NextPointID()
-		pt := geom.Radiate(from, az, dist, dz, id, code)
-		p.Points[id] = pt
-		p.Traverse.Current = id
-		p.Traverse.Close = ""
-		p.Traverse.LegPointIDs = append(p.Traverse.LegPointIDs, id)
-		return Result{Message: "created traverse point " + id + " current=" + p.Traverse.Current, Created: []string{"point:" + id}}, nil
-	case "close":
-		if p.Traverse == nil {
-			return Result{}, fmt.Errorf("no active traverse")
-		}
-		if len(f) != 3 {
-			return Result{}, fmt.Errorf("usage: trav close <known_point>")
-		}
-		current, err := point(p, p.Traverse.Current)
-		if err != nil {
-			return Result{}, err
-		}
-		known, err := point(p, f[2])
-		if err != nil {
-			return Result{}, err
-		}
-		p.Traverse.Close = f[2]
-		misclose := geom.Inverse(current, known)
-		return Result{Message: fmt.Sprintf("misclose az=%s hd=%s", misclose.Azimuth.FormatDMS(2), formatDistance(misclose.HorizontalDistance, p.DisplayPrecision()))}, nil
-	case "show":
-		if p.Traverse == nil {
-			return Result{}, fmt.Errorf("no active traverse")
-		}
-		message := fmt.Sprintf("traverse start=%s current=%s legs=%d next=%s", p.Traverse.Start, p.Traverse.Current, len(p.Traverse.LegPointIDs), p.NextPointID())
-		if p.Traverse.Close != "" {
-			message += " close=" + p.Traverse.Close
-		}
-		return Result{Message: message}, nil
-	case "adjust":
-		if p.Traverse == nil || p.Traverse.Close == "" {
-			return Result{}, fmt.Errorf("traverse must be closed before adjustment")
-		}
-		if len(f) != 3 || (f[2] != "compass" && f[2] != "transit") {
-			return Result{}, fmt.Errorf("usage: trav adjust compass|transit")
-		}
-		return adjustTraverse(p)
-	default:
-		return Result{}, fmt.Errorf("unknown trav subcommand %q", f[1])
-	}
-}
-
-func adjustTraverse(p *project.Project) (Result, error) {
-	current, err := point(p, p.Traverse.Current)
-	if err != nil {
-		return Result{}, err
-	}
-	closePt, err := point(p, p.Traverse.Close)
-	if err != nil {
-		return Result{}, err
-	}
-	count := len(p.Traverse.LegPointIDs)
-	if count == 0 {
-		return Result{}, fmt.Errorf("traverse has no legs")
-	}
-	dn := closePt.Northing - current.Northing
-	de := closePt.Easting - current.Easting
-	var dz *float64
-	if current.Elevation != nil && closePt.Elevation != nil {
-		v := *closePt.Elevation - *current.Elevation
-		dz = &v
-	}
-	updated := make([]string, 0, count)
-	for i, id := range p.Traverse.LegPointIDs {
-		pt := p.Points[id]
-		frac := float64(i+1) / float64(count)
-		pt.Northing += dn * frac
-		pt.Easting += de * frac
-		if dz != nil && pt.Elevation != nil {
-			v := *pt.Elevation + *dz*frac
-			pt.Elevation = &v
-		}
-		p.Points[id] = pt
-		updated = append(updated, "point:"+id)
-	}
-	p.Traverse.Current = p.Traverse.Close
-	return Result{Message: fmt.Sprintf("adjusted %d traverse points", count), Updated: updated}, nil
-}
-
-func execUnits(p *project.Project, f []string) (Result, error) {
-	if len(f) < 2 {
-		return Result{}, fmt.Errorf("usage: units key=value ...")
-	}
-	for _, arg := range f[1:] {
-		k, v, ok := strings.Cut(arg, "=")
-		if !ok {
-			return Result{}, fmt.Errorf("unit argument %q must be key=value", arg)
-		}
-		p.Units[k] = v
-	}
-	return Result{Message: "updated units"}, nil
-}
-
-func execContour(p *project.Project, f []string) (Result, error) {
-	if len(f) < 2 {
-		return Result{}, fmt.Errorf("contour requires subcommand")
-	}
-	switch f[1] {
-	case "gen":
-		if len(f) < 4 {
-			return Result{}, fmt.Errorf("usage: contour gen <id> <interval> [base=<elev>] [index=<n>] [breaklines=all|none|ids:L1,L2] [boundary=codes:C1,C2] [exclude=codes:C3,C4] [maxedge=<distance>] [smooth=<0..3>]")
-		}
-		interval, err := parseFloat("interval", f[3])
-		if err != nil {
-			return Result{}, err
-		}
-		opts := terrain.Options{ID: f[2], Interval: interval, UseBreakline: true, BreaklineMode: "all"}
-		for _, arg := range f[4:] {
-			k, v, ok := strings.Cut(arg, "=")
-			if !ok {
-				return Result{}, fmt.Errorf("contour option %q must be key=value", arg)
-			}
-			switch k {
-			case "base":
-				x, err := parseFloat("base", v)
-				if err != nil {
-					return Result{}, err
-				}
-				opts.Base = &x
-			case "index":
-				n, err := strconv.Atoi(v)
-				if err != nil || n < 0 {
-					return Result{}, fmt.Errorf("index must be zero or greater")
-				}
-				opts.IndexEvery = n
-				opts.IndexEverySet = true
-			case "breaklines":
-				switch {
-				case v == "all":
-					opts.UseBreakline = true
-					opts.BreaklineMode = "all"
-					opts.BreaklineIDs = nil
-				case v == "none":
-					opts.UseBreakline = false
-					opts.BreaklineMode = "none"
-					opts.BreaklineIDs = nil
-				case strings.HasPrefix(v, "ids:"):
-					opts.UseBreakline = true
-					opts.BreaklineMode = "ids"
-					value := strings.TrimPrefix(v, "ids:")
-					if value == "" {
-						return Result{}, fmt.Errorf("breaklines ids list is empty")
-					}
-					opts.BreaklineIDs = strings.Split(value, ",")
-				default:
-					return Result{}, fmt.Errorf("breaklines must be all, none, or ids:L1,L2")
-				}
-			case "boundary":
-				codes, err := parseCodeSelector("boundary", v)
-				if err != nil {
-					return Result{}, err
-				}
-				opts.BoundaryCodes = codes
-			case "exclude":
-				codes, err := parseCodeSelector("exclude", v)
-				if err != nil {
-					return Result{}, err
-				}
-				opts.ExclusionCodes = codes
-			case "maxedge":
-				x, err := parseFloat("maxedge", v)
-				if err != nil || x <= 0 {
-					return Result{}, fmt.Errorf("maxedge must be greater than zero")
-				}
-				opts.MaxEdge = &x
-			case "smooth":
-				n, err := strconv.Atoi(v)
-				if err != nil || n < 0 || n > 3 {
-					return Result{}, fmt.Errorf("smooth must be between zero and three")
-				}
-				opts.Smooth = n
-			default:
-				return Result{}, fmt.Errorf("unknown contour option %q", k)
-			}
-		}
-		set, err := terrain.Generate(p, opts)
-		if err != nil {
-			return Result{}, err
-		}
-		if p.ContourSets == nil {
-			p.ContourSets = map[string]project.ContourSet{}
-		}
-		_, replaced := p.ContourSets[set.ID]
-		p.ContourSets[set.ID] = set
-		if replaced {
-			return Result{Message: contourGenerationMessage("replaced", set), Updated: []string{"contour:" + set.ID}}, nil
-		}
-		return Result{Message: contourGenerationMessage("generated", set), Created: []string{"contour:" + set.ID}}, nil
-	case "regen":
-		if len(f) != 3 {
-			return Result{}, fmt.Errorf("usage: contour regen <id>")
-		}
-		existing, ok := p.ContourSets[f[2]]
-		if !ok {
-			return Result{}, fmt.Errorf("contour set %q not found", f[2])
-		}
-		if existing.Generation == nil {
-			return Result{}, fmt.Errorf("contour set %q has no saved generation specification; replace it with contour gen", f[2])
-		}
-		set, err := terrain.Generate(p, optionsFromSpec(existing.ID, existing.Generation))
-		if err != nil {
-			return Result{}, err
-		}
-		p.ContourSets[set.ID] = set
-		return Result{Message: contourGenerationMessage("regenerated", set), Updated: []string{"contour:" + set.ID}}, nil
-	case "list":
-		if len(p.ContourSets) == 0 {
-			return Result{Message: "0 contour sets"}, nil
-		}
-		var b strings.Builder
-		fmt.Fprintf(&b, "%d contour sets", len(p.ContourSets))
-		for _, set := range p.SortedContourSets() {
-			fmt.Fprintf(&b, "\n%s interval=%s base=%s polylines=%d breaklines=%d index=%d smooth=%d warnings=%d%s",
-				set.ID,
-				formatDistance(set.Interval, p.DisplayPrecision()),
-				formatDistance(set.Base, p.DisplayPrecision()),
-				len(set.Polylines),
-				len(set.Breaklines),
-				set.IndexEvery,
-				contourSmooth(set),
-				len(set.Diagnostics),
-				contourStaleSuffix(set),
-			)
-		}
-		return Result{Message: b.String()}, nil
-	case "info":
-		if len(f) != 3 {
-			return Result{}, fmt.Errorf("usage: contour info <id>")
-		}
-		set, ok := p.ContourSets[f[2]]
-		if !ok {
-			return Result{}, fmt.Errorf("contour set %q not found", f[2])
-		}
-		return Result{Message: contourInfo(set, p.DisplayPrecision())}, nil
-	case "del":
-		if len(f) != 3 {
-			return Result{}, fmt.Errorf("usage: contour del <id>")
-		}
-		if _, ok := p.ContourSets[f[2]]; !ok {
-			return Result{}, fmt.Errorf("contour set %q not found", f[2])
-		}
-		delete(p.ContourSets, f[2])
-		return Result{Message: "deleted contour set " + f[2], Updated: []string{"contour:" + f[2]}}, nil
-	default:
-		return Result{}, fmt.Errorf("unknown contour subcommand %q", f[1])
-	}
-}
-
-func parseCodeSelector(name, value string) ([]string, error) {
-	if !strings.HasPrefix(value, "codes:") {
-		return nil, fmt.Errorf("%s must be codes:C1,C2", name)
-	}
-	value = strings.TrimPrefix(value, "codes:")
-	if value == "" {
-		return nil, fmt.Errorf("%s codes list is empty", name)
-	}
-	codes := strings.Split(value, ",")
-	for _, code := range codes {
-		if code == "" {
-			return nil, fmt.Errorf("%s codes list contains an empty code", name)
-		}
-	}
-	return codes, nil
-}
-
-func optionsFromSpec(id string, spec *project.ContourGenerationSpec) terrain.Options {
-	opts := terrain.Options{
-		ID:             id,
-		Interval:       spec.Interval,
-		Base:           spec.Base,
-		IndexEvery:     spec.IndexEvery,
-		IndexEverySet:  spec.IndexEverySet,
-		BreaklineMode:  spec.BreaklineMode,
-		BreaklineIDs:   append([]string(nil), spec.BreaklineIDs...),
-		BoundaryCodes:  append([]string(nil), spec.BoundaryCodes...),
-		ExclusionCodes: append([]string(nil), spec.ExclusionCodes...),
-		MaxEdge:        spec.MaxEdge,
-		Smooth:         spec.Smooth,
-	}
-	opts.UseBreakline = spec.BreaklineMode != "none"
-	return opts
-}
-
-func contourStaleSuffix(set project.ContourSet) string {
-	if set.Stale {
-		return " stale"
-	}
-	return ""
-}
-
-func contourInfo(set project.ContourSet, precision int) string {
-	msg := fmt.Sprintf("%s interval=%s base=%s polylines=%d breaklines=%d triangles=%d maxedge=%s smooth=%d warnings=%d%s",
-		set.ID, formatDistance(set.Interval, precision), formatDistance(set.Base, precision),
-		len(set.Polylines), len(set.Breaklines), set.TriangleCount,
-		formatDistance(set.EffectiveMaxEdge, precision), contourSmooth(set), len(set.Diagnostics), contourStaleSuffix(set))
-	if set.Generation != nil {
-		msg += fmt.Sprintf(" breakline_mode=%s boundary_codes=%s exclusion_codes=%s",
-			set.Generation.BreaklineMode, strings.Join(set.Generation.BoundaryCodes, ","),
-			strings.Join(set.Generation.ExclusionCodes, ","))
-	}
-	if set.StaleReason != "" {
-		msg += " reason=" + set.StaleReason
-	}
-	for _, diagnostic := range set.Diagnostics {
-		msg += fmt.Sprintf("\nwarning %s: %s", diagnostic.Code, diagnostic.Message)
-	}
-	return msg
-}
-
-func contourSmooth(set project.ContourSet) int {
-	if set.Generation == nil {
-		return 0
-	}
-	return set.Generation.Smooth
-}
-
-func contourGenerationMessage(action string, set project.ContourSet) string {
-	msg := fmt.Sprintf("%s contour set %s with %d polylines", action, set.ID, len(set.Polylines))
-	if len(set.Diagnostics) > 0 {
-		msg += fmt.Sprintf(" (%d warnings)", len(set.Diagnostics))
-	}
-	return msg
-}
-
 func parseAngleTokens(tokens []string) (geom.Angle, int, error) {
 	if len(tokens) >= 3 {
 		if a, used, err := geom.ParseQuadrantBearing(tokens[:3]); err == nil {
@@ -1521,21 +1543,27 @@ func markContoursStaleAfterCommand(p *project.Project, fields []string, result R
 				}
 			}
 		}
-	case "line":
+	case "line", "polyline", "polygon":
 		switch fields[1] {
-		case "add", "del", "gen":
-			reason = "line geometry changed"
+		case "add", "del":
+			reason = "feature geometry changed"
+		case "gen":
+			if len(result.Created) > 0 {
+				reason = "line geometry changed"
+			}
 		case "edit":
 			for _, arg := range fields[3:] {
 				if strings.HasPrefix(arg, "from=") || strings.HasPrefix(arg, "to=") ||
-					strings.HasPrefix(arg, "code=") || strings.HasPrefix(arg, "terrain=") {
-					reason = "line terrain input changed"
+					strings.HasPrefix(arg, "points=") || strings.HasPrefix(arg, "code=") ||
+					strings.HasPrefix(arg, "terrain=") {
+					reason = "feature terrain input changed"
 				}
 			}
 		}
 	default:
 		for _, item := range append(append([]string(nil), result.Created...), result.Updated...) {
-			if strings.HasPrefix(item, "point:") || strings.HasPrefix(item, "line:") {
+			if strings.HasPrefix(item, "point:") || strings.HasPrefix(item, "line:") ||
+				strings.HasPrefix(item, "polyline:") || strings.HasPrefix(item, "polygon:") {
 				reason = "point geometry changed"
 				break
 			}
@@ -1552,6 +1580,14 @@ func point(p *project.Project, id string) (geom.Point, error) {
 		return geom.Point{}, fmt.Errorf("point %q not found", id)
 	}
 	return pt, nil
+}
+
+func storeCreatedPoint(p *project.Project, pt geom.Point) error {
+	if _, exists := p.Points[pt.ID]; exists {
+		return fmt.Errorf("point %q already exists", pt.ID)
+	}
+	p.Points[pt.ID] = pt
+	return nil
 }
 
 func parseFloat(name, value string) (float64, error) {

@@ -102,7 +102,7 @@ func TestMapLineOverlay(t *testing.T) {
 	p := project.New("test")
 	p.Points["1"] = geom.Point{ID: "1", Northing: 0, Easting: 0}
 	p.Points["2"] = geom.Point{ID: "2", Northing: 0, Easting: 10}
-	p.Lines["L1"] = project.Line{ID: "L1", From: "1", To: "2"}
+	p.Features["L1"] = project.Feature{ID: "L1", Kind: project.FeatureLine, PointIDs: []string{"1", "2"}}
 	got := renderMap(p, MapState{ShowLines: true, Zoom: 1}, 60, 18, 3)
 	if !strings.Contains(got, ".") {
 		t.Fatalf("map missing line overlay:\n%s", got)
@@ -178,7 +178,7 @@ func TestRenderMapClipsLinesToCustomView(t *testing.T) {
 	p := project.New("test")
 	p.Points["1"] = geom.Point{ID: "1", Northing: 0, Easting: -100}
 	p.Points["2"] = geom.Point{ID: "2", Northing: 0, Easting: 100}
-	p.Lines["L1"] = project.Line{ID: "L1", From: "1", To: "2"}
+	p.Features["L1"] = project.Feature{ID: "L1", Kind: project.FeatureLine, PointIDs: []string{"1", "2"}}
 	state := MapState{ShowLines: true, Zoom: 10, CenterE: 0, CenterN: 0, Custom: true}
 	got := renderMap(p, state, 60, 18, 3)
 	if !strings.Contains(got, ".") {

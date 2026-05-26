@@ -94,13 +94,13 @@ func formatDecimal(value float64, precision int) string {
 	return strconv.FormatFloat(value, 'f', precision, 64)
 }
 
-func FormatLineRows(lines []project.Line, contours []project.ContourSet, precision int) string {
+func FormatLineRows(features []project.Feature, contours []project.ContourSet, precision int) string {
 	var b strings.Builder
-	b.WriteString(fmt.Sprintf("%-10s %-10s %-10s %-12s %s\n", "ID", "From", "To", "Code", "Description"))
-	b.WriteString(strings.Repeat("-", 58))
+	b.WriteString(fmt.Sprintf("%-10s %-10s %-24s %-12s %s\n", "ID", "Type", "Points", "Code", "Description"))
+	b.WriteString(strings.Repeat("-", 72))
 	b.WriteByte('\n')
-	for _, line := range lines {
-		fmt.Fprintf(&b, "%-10s %-10s %-10s %-12s %s\n", line.ID, line.From, line.To, line.Code, line.Description)
+	for _, feature := range features {
+		fmt.Fprintf(&b, "%-10s %-10s %-24s %-12s %s\n", feature.ID, feature.Kind, strings.Join(feature.PointIDs, ","), feature.Code, feature.Description)
 	}
 	if len(contours) > 0 {
 		b.WriteString("Contours:\n")

@@ -150,7 +150,7 @@ func TestCloseCommand(t *testing.T) {
 			t.Fatalf("message=%q missing %q", got.Message, want)
 		}
 	}
-	if len(p.Points) != 3 || len(p.Lines) != 0 || p.Traverse != nil {
+	if len(p.Points) != 3 || len(p.Features) != 0 || p.Traverse != nil {
 		t.Fatal("close should not mutate project state")
 	}
 }
@@ -192,7 +192,7 @@ func TestBearingAddCommandNormalizesResult(t *testing.T) {
 	if got.Message != "bearing=10°00′00.00″" {
 		t.Fatalf("message=%q", got.Message)
 	}
-	if len(p.Points) != 0 || len(p.Lines) != 0 {
+	if len(p.Points) != 0 || len(p.Features) != 0 {
 		t.Fatal("bearing add should not mutate project")
 	}
 }
@@ -258,7 +258,7 @@ func TestDistanceCommandsUseDisplayPrecisionWithoutMutation(t *testing.T) {
 	if got.Message != "dist=-2.50" {
 		t.Fatalf("message=%q", got.Message)
 	}
-	if len(p.Points) != 0 || len(p.Lines) != 0 {
+	if len(p.Points) != 0 || len(p.Features) != 0 {
 		t.Fatal("dist commands should not mutate project")
 	}
 }
@@ -393,6 +393,67 @@ func TestResectCommandAllowsOmittedCode(t *testing.T) {
 	close(t, got.Easting, 0)
 	if got.Code != "" {
 		t.Fatalf("code=%q want empty", got.Code)
+	}
+}
+
+func TestCalculatedPointCommandsRejectExistingDestinationID(t *testing.T) {
+	tests := []struct {
+		name    string
+		setup   func(*project.Project)
+		command string
+	}{
+		{"rad", func(p *project.Project) { mustExec(t, p, "pt add 1 0 0 1") }, "rad 1 90.0000 10 as X"},
+		{"rad3d", func(p *project.Project) { mustExec(t, p, "pt add 1 0 0 1") }, "rad3d 1 90.0000 10 90.0000 as X"},
+		{"midpoint", func(p *project.Project) {
+			mustExec(t, p, "pt add 1 0 0")
+			mustExec(t, p, "pt add 2 10 10")
+		}, "midpoint 1 2 as X TEST"},
+		{"offset points", func(p *project.Project) {
+			mustExec(t, p, "pt add 1 0 0")
+			mustExec(t, p, "pt add 2 10 0")
+		}, "offset 1 2 2 5 as X"},
+		{"offset line", func(p *project.Project) {
+			mustExec(t, p, "pt add 1 0 0")
+			mustExec(t, p, "pt add 2 10 0")
+			mustExec(t, p, "line add L1 1 2")
+		}, "offset L1 2 5 as X"},
+		{"line intersect", func(p *project.Project) {
+			mustExec(t, p, "pt add 1 0 0")
+			mustExec(t, p, "pt add 2 10 10")
+			mustExec(t, p, "pt add 3 0 10")
+			mustExec(t, p, "pt add 4 10 0")
+		}, "line intersect 1 2 3 4 as X"},
+		{"bearing-bearing", func(p *project.Project) {
+			mustExec(t, p, "pt add 1 0 0")
+			mustExec(t, p, "pt add 2 10 0")
+		}, "intersect bearing-bearing 1 45.0000 2 315.0000 as X"},
+		{"bearing-distance", func(p *project.Project) {
+			mustExec(t, p, "pt add 1 0 0")
+			mustExec(t, p, "pt add 2 5 0")
+		}, "intersect bearing-distance 1 90.0000 2 5 choose far as X"},
+		{"distance-distance", func(p *project.Project) {
+			mustExec(t, p, "pt add 1 0 0")
+			mustExec(t, p, "pt add 2 10 0")
+		}, "intersect distance-distance 1 10 2 10 choose left as X"},
+		{"resect", func(p *project.Project) {
+			mustExec(t, p, "pt add N 0 10")
+			mustExec(t, p, "pt add E 10 0")
+			mustExec(t, p, "pt add W -10 0")
+		}, "resect N 0.0000 E 90.0000 W 270.0000 as X"},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			p := project.New("test")
+			tc.setup(p)
+			mustExec(t, p, "pt add X 123 456 KEEP")
+			before := p.Points["X"]
+			if _, err := Execute(p, tc.command); err == nil || !strings.Contains(err.Error(), "already exists") {
+				t.Fatalf("error=%v want existing point rejection", err)
+			}
+			if got := p.Points["X"]; got != before {
+				t.Fatalf("point X overwritten: got=%+v before=%+v", got, before)
+			}
+		})
 	}
 }
 
@@ -668,8 +729,8 @@ func TestLineEditCommandSupportsQuotedDescription(t *testing.T) {
 	mustExec(t, p, "pt add 3 20 0")
 	mustExec(t, p, "line add L1 1 2 BOUNDARY")
 	mustExec(t, p, `line edit L1 from=2 to=3 code=EASE desc="this is a line"`)
-	got := p.Lines["L1"]
-	if got.From != "2" || got.To != "3" || got.Code != "EASE" || got.Description != "this is a line" {
+	got := p.Features["L1"]
+	if got.PointIDs[0] != "2" || got.PointIDs[1] != "3" || got.Code != "EASE" || got.Description != "this is a line" {
 		t.Fatalf("line=%+v", got)
 	}
 }
@@ -698,8 +759,8 @@ func TestLineAddAndDeleteValidateExistingIDs(t *testing.T) {
 	if _, err := Execute(p, "line add L1 1 2 DUP"); err == nil {
 		t.Fatal("expected duplicate line error")
 	}
-	if p.Lines["L1"].Code != "BOUNDARY" {
-		t.Fatalf("line was overwritten: %+v", p.Lines["L1"])
+	if p.Features["L1"].Code != "BOUNDARY" {
+		t.Fatalf("line was overwritten: %+v", p.Features["L1"])
 	}
 	if _, err := Execute(p, "line del MISSING"); err == nil {
 		t.Fatal("expected missing line error")
@@ -723,10 +784,10 @@ func TestLineGenCreatesSequentialLinesForCode(t *testing.T) {
 	if len(got.Created) != 2 {
 		t.Fatalf("created=%v want 2 lines", got.Created)
 	}
-	if line := p.Lines["L1"]; line.From != "1" || line.To != "3" || line.Code != "PEG" || line.Description != "" {
+	if line := p.Features["L1"]; line.PointIDs[0] != "1" || line.PointIDs[1] != "3" || line.Code != "PEG" || line.Description != "" {
 		t.Fatalf("line L1=%+v", line)
 	}
-	if line := p.Lines["L2"]; line.From != "3" || line.To != "4" || line.Code != "PEG" || line.Description != "" {
+	if line := p.Features["L2"]; line.PointIDs[0] != "3" || line.PointIDs[1] != "4" || line.Code != "PEG" || line.Description != "" {
 		t.Fatalf("line L2=%+v", line)
 	}
 }
@@ -745,10 +806,10 @@ func TestLineGenSkipsExistingUndirectedPairs(t *testing.T) {
 	if !strings.Contains(got.Message, "generated 1 lines") || !strings.Contains(got.Message, "skipped 1 duplicates") {
 		t.Fatalf("message=%q", got.Message)
 	}
-	if _, ok := p.Lines["L10"]; !ok {
-		t.Fatalf("lines=%+v want generated L10", p.Lines)
+	if _, ok := p.Features["L10"]; !ok {
+		t.Fatalf("lines=%+v want generated L10", p.Features)
 	}
-	if line := p.Lines["L10"]; line.From != "2" || line.To != "3" {
+	if line := p.Features["L10"]; line.PointIDs[0] != "2" || line.PointIDs[1] != "3" {
 		t.Fatalf("line L10=%+v", line)
 	}
 }
@@ -951,16 +1012,54 @@ func TestLineTerrainRoleIsStoredAndDoesNotRequireReservedCode(t *testing.T) {
 	mustExec(t, p, "pt add 1 0 0 0")
 	mustExec(t, p, "pt add 2 10 0 10")
 	mustExec(t, p, "line add R1 1 2 FEATURE terrain=ridge")
-	if got := p.Lines["R1"]; got.Code != "FEATURE" || got.TerrainRole != "ridge" {
+	if got := p.Features["R1"]; got.Code != "FEATURE" || got.TerrainRole != "ridge" {
 		t.Fatalf("line=%+v", got)
 	}
 	mustExec(t, p, "line edit R1 terrain=drain")
-	if p.Lines["R1"].TerrainRole != "drain" {
-		t.Fatalf("terrain role=%q", p.Lines["R1"].TerrainRole)
+	if p.Features["R1"].TerrainRole != "drain" {
+		t.Fatalf("terrain role=%q", p.Features["R1"].TerrainRole)
 	}
 	mustExec(t, p, "line edit R1 terrain=none")
-	if p.Lines["R1"].TerrainRole != "" {
-		t.Fatalf("terrain role=%q want empty", p.Lines["R1"].TerrainRole)
+	if p.Features["R1"].TerrainRole != "" {
+		t.Fatalf("terrain role=%q want empty", p.Features["R1"].TerrainRole)
+	}
+}
+
+func TestGroupPolylineAndPolygonCommandsStoreStyledFeatures(t *testing.T) {
+	p := project.New("test")
+	for _, command := range []string{
+		"pt add 1 0 0", "pt add 2 10 0", "pt add 3 10 10", "pt add 4 0 10",
+		"group add BND layer=BOUNDARIES color=1",
+		"polyline add K1 1 2 3 code=KERB group=BND terrain=standard",
+		"polygon add LOT1 1 2 3 4 code=LOT group=BND",
+		"pt edit 1 group=BND",
+	} {
+		mustExec(t, p, command)
+	}
+	if got := p.Features["K1"]; got.Kind != project.FeaturePolyline || len(got.PointIDs) != 3 || got.GroupID != "BND" {
+		t.Fatalf("polyline=%+v", got)
+	}
+	if got := p.Features["LOT1"]; got.Kind != project.FeaturePolygon || got.GroupID != "BND" {
+		t.Fatalf("polygon=%+v", got)
+	}
+	if p.Points["1"].GroupID != "BND" {
+		t.Fatalf("point group=%q", p.Points["1"].GroupID)
+	}
+	if _, err := Execute(p, "group del BND"); err == nil {
+		t.Fatal("expected assigned group deletion to fail")
+	}
+}
+
+func TestPolygonRejectsSelfIntersectionAndTerrainRole(t *testing.T) {
+	p := project.New("test")
+	for _, command := range []string{"pt add 1 0 0", "pt add 2 10 10", "pt add 3 0 10", "pt add 4 10 0"} {
+		mustExec(t, p, command)
+	}
+	if _, err := Execute(p, "polygon add BAD 1 2 3 4"); err == nil {
+		t.Fatal("expected crossing polygon error")
+	}
+	if _, err := Execute(p, "polygon add BAD 1 3 2 terrain=ridge"); err == nil {
+		t.Fatal("expected polygon terrain role error")
 	}
 }
 
@@ -1017,6 +1116,26 @@ func TestExecuteAndRecord(t *testing.T) {
 	}
 	if p.History[0].Created[0] != "point:1" {
 		t.Fatalf("created=%v", p.History[0].Created)
+	}
+}
+
+func TestExecuteChangedAndPersistedHistoryTrackMutationsOnly(t *testing.T) {
+	p := project.New("test")
+	created, err := ExecuteAndRecord(p, "pt add 1 0 0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !created.Changed || len(p.History) != 1 {
+		t.Fatalf("created=%+v history=%d", created, len(p.History))
+	}
+	mustExec(t, p, "pt add 2 10 0")
+	historyCount := len(p.History)
+	report, err := ExecuteAndRecord(p, "inverse 1 2")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if report.Changed || len(p.History) != historyCount {
+		t.Fatalf("report=%+v history=%d want %d", report, len(p.History), historyCount)
 	}
 }
 

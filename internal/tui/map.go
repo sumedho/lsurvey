@@ -212,22 +212,24 @@ func drawMapLines(grid [][]rune, p *project.Project, bounds mapBounds) {
 		return
 	}
 	width := len(grid[0])
-	for _, line := range p.SortedLines() {
-		from, ok1 := p.Points[line.From]
-		to, ok2 := p.Points[line.To]
-		if !ok1 || !ok2 {
-			continue
+	for _, feature := range p.SortedFeatures() {
+		for _, segment := range p.FeatureSegments(feature) {
+			from, ok1 := p.Points[segment.From]
+			to, ok2 := p.Points[segment.To]
+			if !ok1 || !ok2 {
+				continue
+			}
+			fromClipped, toClipped, ok := clipLineToBounds(from.Easting, from.Northing, to.Easting, to.Northing, bounds)
+			if !ok {
+				continue
+			}
+			x0, y0, ok0 := mapCell(fromClipped.Easting, fromClipped.Northing, bounds, width, height)
+			x1, y1, ok1 := mapCell(toClipped.Easting, toClipped.Northing, bounds, width, height)
+			if !ok0 || !ok1 {
+				continue
+			}
+			drawLineGlyph(grid, x0, y0, x1, y1, '.')
 		}
-		fromClipped, toClipped, ok := clipLineToBounds(from.Easting, from.Northing, to.Easting, to.Northing, bounds)
-		if !ok {
-			continue
-		}
-		x0, y0, ok0 := mapCell(fromClipped.Easting, fromClipped.Northing, bounds, width, height)
-		x1, y1, ok1 := mapCell(toClipped.Easting, toClipped.Northing, bounds, width, height)
-		if !ok0 || !ok1 {
-			continue
-		}
-		drawLineGlyph(grid, x0, y0, x1, y1, '.')
 	}
 }
 

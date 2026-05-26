@@ -8,9 +8,12 @@ import (
 )
 
 type breakline struct {
-	ID string
-	A  int
-	B  int
+	ID        string
+	FeatureID string
+	From      string
+	To        string
+	A         int
+	B         int
 }
 
 func validateBreaklines(p *project.Project, opts Options, points []vertex) ([]breakline, error) {
@@ -29,11 +32,11 @@ func validateBreaklines(p *project.Project, opts Options, points []vertex) ([]br
 		for _, code := range append(append([]string(nil), opts.BoundaryCodes...), opts.ExclusionCodes...) {
 			clipCodes[code] = true
 		}
-		for _, line := range p.SortedLines() {
-			if clipCodes[line.Code] {
+		for _, feature := range p.SortedFeatures() {
+			if feature.Kind == project.FeaturePolygon || clipCodes[feature.Code] {
 				continue
 			}
-			ids = append(ids, line.ID)
+			ids = append(ids, feature.ID)
 		}
 	}
 	var out []breakline
@@ -43,32 +46,37 @@ func validateBreaklines(p *project.Project, opts Options, points []vertex) ([]br
 			continue
 		}
 		seen[id] = true
-		line, ok := p.Lines[id]
-		if !ok {
+		feature, ok := p.Features[id]
+		if !ok || feature.Kind == project.FeaturePolygon {
 			return nil, fmt.Errorf("breakline %q not found", id)
 		}
-		a, ok := index[line.From]
-		if !ok {
-			if pt, found := p.Points[line.From]; found && pt.Elevation != nil {
-				a, ok = byCoordinate[coordKey(pt.Easting, pt.Northing)]
+		for _, segment := range p.FeatureSegments(feature) {
+			a, ok := index[segment.From]
+			if !ok {
+				if pt, found := p.Points[segment.From]; found && pt.Elevation != nil {
+					a, ok = byCoordinate[coordKey(pt.Easting, pt.Northing)]
+				}
 			}
-		}
-		if !ok {
-			return nil, fmt.Errorf("breakline %q from point %q has no elevation", id, line.From)
-		}
-		b, ok := index[line.To]
-		if !ok {
-			if pt, found := p.Points[line.To]; found && pt.Elevation != nil {
-				b, ok = byCoordinate[coordKey(pt.Easting, pt.Northing)]
+			if !ok {
+				return nil, fmt.Errorf("breakline %q from point %q has no elevation", id, segment.From)
 			}
+			b, ok := index[segment.To]
+			if !ok {
+				if pt, found := p.Points[segment.To]; found && pt.Elevation != nil {
+					b, ok = byCoordinate[coordKey(pt.Easting, pt.Northing)]
+				}
+			}
+			if !ok {
+				return nil, fmt.Errorf("breakline %q to point %q has no elevation", id, segment.To)
+			}
+			if a == b {
+				return nil, fmt.Errorf("breakline %q has identical endpoints", id)
+			}
+			out = append(out, breakline{
+				ID: fmt.Sprintf("%s:%d", id, segment.Index+1), FeatureID: id,
+				From: segment.From, To: segment.To, A: a, B: b,
+			})
 		}
-		if !ok {
-			return nil, fmt.Errorf("breakline %q to point %q has no elevation", id, line.To)
-		}
-		if a == b {
-			return nil, fmt.Errorf("breakline %q has identical endpoints", id)
-		}
-		out = append(out, breakline{ID: id, A: a, B: b})
 	}
 	for i := range out {
 		for j := i + 1; j < len(out); j++ {

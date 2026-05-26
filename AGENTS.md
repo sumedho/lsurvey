@@ -11,6 +11,8 @@ so another UI, such as a web frontend, can be added later.
 ## Architecture
 
 - `cmd/lsurvey`: CLI entry point, TUI startup, and batch exports.
+- `internal/app`: UI-independent project session, command routing, and file
+  import/export orchestration.
 - `internal/cogo`: command execution and COGO command behavior.
 - `internal/geom`: geometry primitives, angle parsing/formatting, point math.
 - `internal/project`: project model, save/load, display settings.
@@ -18,6 +20,7 @@ so another UI, such as a web frontend, can be added later.
 - `internal/help`: command help data and styled help rendering.
 - `internal/csvpoints`: point CSV import/export.
 - `internal/dxf`: ASCII DXF export.
+- `internal/landxml`: LandXML geometry export.
 - `internal/paths`: extension handling for `.srv`, `.dxf`, and `.csv`.
 - `internal/terrain`: TIN construction, breakline insertion, contour slicing,
   and contour polyline joining.
@@ -33,10 +36,15 @@ so another UI, such as a web frontend, can be added later.
 - Add tests for import/export format changes.
 - Add tests for TUI command handling when command behavior changes.
 - Do not silently overwrite user data unless the command explicitly says so.
+- Point-producing calculations must reject an existing destination point ID.
 - Preserve point codes and descriptions unless the command intentionally edits
   them.
 - Points may be 2D or 3D. A nil elevation means the point is 2D.
 - Display precision affects presentation only; do not round stored coordinates.
+- `undo` and `redo` cover successful edits in the current project session,
+  survive saves, and reset on `new` or `open`.
+- Persisted audit history is append-only; successful `undo` and `redo` actions
+  must be recorded rather than deleting earlier audit entries.
 
 ## Command Behavior Expectations
 
@@ -44,6 +52,8 @@ so another UI, such as a web frontend, can be added later.
 - `open` accepts project paths with or without `.srv`.
 - `export dxf` appends `.dxf` when missing.
 - `export csv` and `import csv` append `.csv` when missing.
+- `export landxml` appends `.xml` when missing and currently requires metric
+  distance units (`distance=m`).
 - CSV import must be atomic: invalid input must not partially mutate the
   project.
 - CSV files must use this exact header:
@@ -52,12 +62,17 @@ so another UI, such as a web frontend, can be added later.
 id,easting,northing,elevation,code,description
 ```
 
-- `pt del` must reject missing points and points referenced by stored lines.
-- `pt rename` must update line references.
+- `pt del` must reject missing points and points referenced by stored features.
+- `pt rename` must update feature references.
 - `line add` must reject duplicate line IDs.
 - `line del` must reject missing line IDs.
 - `line edit` and `pt edit` must support quoted descriptions such as
   `desc="this is a point"`.
+- Stored user geometry is represented by `line`, `polyline`, and `polygon`
+  features; polygons are implicitly closed and must not self-intersect.
+- Style groups are flat records with unique case-insensitive DXF layer names
+  and ACI colors from 1 through 255; each point or user feature may belong to
+  at most one group.
 - `offset` must work from either two point IDs or one stored line ID.
 - `resect` takes three known points and bearings observed from the unknown point
   to those points, then stores the best-fit point from the reverse bearing lines.
@@ -86,7 +101,7 @@ id,easting,northing,elevation,code,description
 - `index=0` disables major/index contours.
 - Default contour breakline behavior is `breaklines=all`.
 - `breaklines=none` must generate from points only.
-- `breaklines=ids:L1,L2` must use only those stored lines.
+- `breaklines=ids:L1,L2` must use only those stored line or polyline features.
 - Breakline endpoint points must have elevations.
 - Selected breaklines must not cross except at shared endpoints.
 - `boundary=codes:C1,C2` clips contours to one closed stored-line ring selected
@@ -109,6 +124,10 @@ id,easting,northing,elevation,code,description
 - DXF export must add at most one readable contour elevation label per suitable
   contour line on `CONTOUR_LABELS` or `CONTOUR_LABELS_INDEX`, suppressing short
   or colliding labels.
+- DXF export must apply a feature or point group's layer and ACI color while
+  retaining the fixed contour layers and styles.
+- LandXML export writes points and line/polyline/polygon plan-feature geometry;
+  it does not currently write contours or surfaces.
 - Keep contour geometry tests in `internal/terrain`; keep command behavior tests
   in `internal/cogo`.
 
@@ -128,7 +147,8 @@ id,easting,northing,elevation,code,description
 - The main view should show a top info area, point list area, line list area,
   and command input area.
 - Use Lip Gloss for borders and styled regions.
-- `F1` opens help.
+- `F1` opens searchable command help; `/` filters commands and `Enter` opens
+  detail for the selected command.
 - `F2` toggles the ASCII map.
 - Map view supports panning with arrows, zoom in/out, fit-to-points, and line
   overlay.

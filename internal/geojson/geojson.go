@@ -4,16 +4,13 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"math"
 	"os"
 	"strconv"
+	"strings"
 
 	"lsurvey/internal/geom"
 	"lsurvey/internal/project"
-)
-
-const (
-	featureTypePoint = "point"
-	featureTypeLine  = "line"
 )
 
 type featureCollection struct {
@@ -34,8 +31,9 @@ type geometry struct {
 }
 
 type importState struct {
-	points map[string]geom.Point
-	lines  map[string]project.Line
+	points   map[string]geom.Point
+	features map[string]project.Feature
+	groups   map[string]project.Group
 }
 
 func ImportFile(path string, p *project.Project) (int, int, error) {
@@ -67,304 +65,289 @@ func Import(r io.Reader, p *project.Project) (int, int, error) {
 	if fc.Type != "FeatureCollection" {
 		return 0, 0, fmt.Errorf("unsupported GeoJSON type %q", fc.Type)
 	}
-
-	state := importState{
-		points: clonePoints(p.Points),
-		lines:  cloneLines(p.Lines),
-	}
-	pointCount := 0
-	lineCount := 0
-	pointFeatures := make([]feature, 0, len(fc.Features))
-	otherFeatures := make([]feature, 0, len(fc.Features))
-	for _, feat := range fc.Features {
-		if feat.Geometry.Type == "Point" {
-			pointFeatures = append(pointFeatures, feat)
-			continue
+	state := importState{clonePoints(p.Points), cloneFeatures(p.Features), cloneGroups(p.Groups)}
+	points, features := 0, 0
+	for _, pass := range []string{"Point", "geometry"} {
+		for i, feat := range fc.Features {
+			if (pass == "Point") != (feat.Geometry.Type == "Point") {
+				continue
+			}
+			addedPoints, addedFeatures, err := importFeature(&state, feat)
+			if err != nil {
+				return 0, 0, fmt.Errorf("feature %d: %w", i+1, err)
+			}
+			points += addedPoints
+			features += addedFeatures
 		}
-		otherFeatures = append(otherFeatures, feat)
 	}
-	for idx, feat := range pointFeatures {
-		addedPoints, addedLines, err := importFeature(state, feat)
-		if err != nil {
-			return pointCount, lineCount, fmt.Errorf("feature %d: %w", idx+1, err)
-		}
-		pointCount += addedPoints
-		lineCount += addedLines
-	}
-	for idx, feat := range otherFeatures {
-		addedPoints, addedLines, err := importFeature(state, feat)
-		if err != nil {
-			return pointCount, lineCount, fmt.Errorf("feature %d: %w", idx+1+len(pointFeatures), err)
-		}
-		pointCount += addedPoints
-		lineCount += addedLines
-	}
-
-	p.Points = state.points
-	p.Lines = state.lines
-	if pointCount > 0 || lineCount > 0 {
+	p.Points, p.Features, p.Groups = state.points, state.features, state.groups
+	if points > 0 || features > 0 {
 		p.MarkContoursStale("imported terrain input changed")
 	}
-	return pointCount, lineCount, nil
+	return points, features, nil
 }
 
 func Export(w io.Writer, p *project.Project) error {
-	fc := featureCollection{
-		Type:     "FeatureCollection",
-		Features: make([]feature, 0, len(p.Points)+len(p.Lines)),
-	}
+	fc := featureCollection{Type: "FeatureCollection", Features: make([]feature, 0, len(p.Points)+len(p.Features))}
 	for _, pt := range p.SortedPoints() {
-		fc.Features = append(fc.Features, exportPointFeature(pt))
+		fc.Features = append(fc.Features, exportPoint(pt, p.Groups[pt.GroupID]))
 	}
-	for _, line := range p.SortedLines() {
-		from, ok1 := p.Points[line.From]
-		to, ok2 := p.Points[line.To]
-		if !ok1 || !ok2 {
-			continue
-		}
-		fc.Features = append(fc.Features, exportLineFeature(line, from, to))
+	for _, item := range p.SortedFeatures() {
+		fc.Features = append(fc.Features, exportFeature(item, p))
 	}
 	enc := json.NewEncoder(w)
 	enc.SetIndent("", "  ")
 	return enc.Encode(fc)
 }
 
-func exportPointFeature(pt geom.Point) feature {
-	coords := []float64{pt.Easting, pt.Northing}
-	if pt.Elevation != nil {
-		coords = append(coords, *pt.Elevation)
-	}
-	return feature{
-		Type: "Feature",
-		ID:   pt.ID,
-		Geometry: geometry{
-			Type:        "Point",
-			Coordinates: mustMarshal(coords),
-		},
-		Properties: map[string]any{
-			"feature_type": featureTypePoint,
-			"id":           pt.ID,
-			"code":         pt.Code,
-			"description":  pt.Description,
-		},
-	}
+func exportPoint(pt geom.Point, group project.Group) feature {
+	props := map[string]any{"feature_type": "point", "id": pt.ID, "code": pt.Code, "description": pt.Description}
+	addGroupProperties(props, pt.GroupID, group)
+	return feature{Type: "Feature", ID: pt.ID, Geometry: geometry{Type: "Point", Coordinates: mustMarshal(pointCoordinate(pt))}, Properties: props}
 }
 
-func exportLineFeature(line project.Line, from, to geom.Point) feature {
-	coords := [][]float64{
-		{from.Easting, from.Northing},
-		{to.Easting, to.Northing},
+func exportFeature(item project.Feature, p *project.Project) feature {
+	coords := make([][]float64, 0, len(item.PointIDs)+1)
+	for _, id := range item.PointIDs {
+		coords = append(coords, pointCoordinate(p.Points[id]))
 	}
-	if from.Elevation != nil && to.Elevation != nil {
-		coords = [][]float64{
-			{from.Easting, from.Northing, *from.Elevation},
-			{to.Easting, to.Northing, *to.Elevation},
-		}
+	geometryType := "LineString"
+	raw := any(coords)
+	if item.Kind == project.FeaturePolygon {
+		coords = append(coords, coords[0])
+		geometryType = "Polygon"
+		raw = [][][]float64{coords}
 	}
-	return feature{
-		Type: "Feature",
-		ID:   line.ID,
-		Geometry: geometry{
-			Type:        "LineString",
-			Coordinates: mustMarshal(coords),
-		},
-		Properties: map[string]any{
-			"feature_type": featureTypeLine,
-			"id":           line.ID,
-			"code":         line.Code,
-			"description":  line.Description,
-			"terrain_role": line.TerrainRole,
-			"from":         line.From,
-			"to":           line.To,
-		},
+	props := map[string]any{
+		"feature_type": item.Kind, "id": item.ID, "point_ids": strings.Join(item.PointIDs, ","),
+		"code": item.Code, "description": item.Description, "terrain_role": item.TerrainRole,
 	}
+	addGroupProperties(props, item.GroupID, p.Groups[item.GroupID])
+	return feature{Type: "Feature", ID: item.ID, Geometry: geometry{Type: geometryType, Coordinates: mustMarshal(raw)}, Properties: props}
 }
 
-func importFeature(state importState, feat feature) (int, int, error) {
-	if feat.Type != "Feature" {
-		return 0, 0, fmt.Errorf("unsupported feature type %q", feat.Type)
+func addGroupProperties(props map[string]any, id string, group project.Group) {
+	if id == "" {
+		return
 	}
+	props["group"] = id
+	props["layer"] = group.Layer
+	props["color"] = group.Color
+}
+
+func importFeature(state *importState, feat feature) (int, int, error) {
 	switch feat.Geometry.Type {
 	case "Point":
-		pt, err := importPointFeature(state, feat)
+		coord, err := parseCoordinate(feat.Geometry.Coordinates)
 		if err != nil {
 			return 0, 0, err
 		}
-		state.points[pt.ID] = pt
+		id := first(propertyString(feat.Properties, "id"), scalarString(feat.ID), nextPointID(state.points))
+		groupID, err := importGroup(state, feat.Properties)
+		if err != nil {
+			return 0, 0, err
+		}
+		pt := makePoint(id, coord)
+		pt.Code, pt.Description, pt.GroupID = propertyString(feat.Properties, "code"), propertyString(feat.Properties, "description", "desc"), groupID
+		if existing, ok := state.points[id]; ok && !pointsEqual(existing, pt) {
+			return 0, 0, fmt.Errorf("point %q already exists", id)
+		}
+		if _, ok := state.points[id]; ok {
+			return 0, 0, nil
+		}
+		state.points[id] = pt
 		return 1, 0, nil
 	case "LineString":
-		lines, points, err := importLineStringFeature(state, feat)
-		return points, lines, err
-	case "MultiLineString":
-		lines, points, err := importMultiLineStringFeature(state, feat)
-		return points, lines, err
+		var coords [][]float64
+		if err := json.Unmarshal(feat.Geometry.Coordinates, &coords); err != nil || len(coords) < 2 {
+			return 0, 0, fmt.Errorf("LineString requires at least 2 coordinates")
+		}
+		kind := propertyString(feat.Properties, "feature_type")
+		if kind != project.FeatureLine {
+			kind = project.FeaturePolyline
+		}
+		return importGeometry(state, feat, coords, kind)
+	case "Polygon":
+		var rings [][][]float64
+		if err := json.Unmarshal(feat.Geometry.Coordinates, &rings); err != nil || len(rings) != 1 || len(rings[0]) < 4 {
+			return 0, 0, fmt.Errorf("Polygon requires one closed exterior ring")
+		}
+		coords := rings[0]
+		if !coordinatesEqual(coords[0], coords[len(coords)-1]) {
+			return 0, 0, fmt.Errorf("Polygon ring must be closed")
+		}
+		return importGeometry(state, feat, coords[:len(coords)-1], project.FeaturePolygon)
 	default:
 		return 0, 0, fmt.Errorf("unsupported geometry type %q", feat.Geometry.Type)
 	}
 }
 
-func importPointFeature(state importState, feat feature) (geom.Point, error) {
-	coord, err := parseCoordinate(feat.Geometry.Coordinates)
+func importGeometry(state *importState, feat feature, coords [][]float64, kind string) (int, int, error) {
+	ids := strings.Split(propertyString(feat.Properties, "point_ids"), ",")
+	if len(ids) != len(coords) || len(ids) == 1 && ids[0] == "" {
+		ids = nil
+	}
+	added := 0
+	pointIDs := make([]string, len(coords))
+	for i, coord := range coords {
+		if len(coord) < 2 || len(coord) > 3 {
+			return 0, 0, fmt.Errorf("coordinate must have 2 or 3 numbers")
+		}
+		id := ""
+		if ids != nil {
+			id = ids[i]
+		} else {
+			id = nextPointID(state.points)
+		}
+		pt := makePoint(id, coord)
+		if existing, ok := state.points[id]; ok {
+			if !samePosition(existing, pt) {
+				return 0, 0, fmt.Errorf("point %q already exists", id)
+			}
+		} else {
+			state.points[id] = pt
+			added++
+		}
+		pointIDs[i] = id
+	}
+	id := first(propertyString(feat.Properties, "id"), scalarString(feat.ID), nextFeatureID(state.features))
+	if _, exists := state.features[id]; exists {
+		return 0, 0, fmt.Errorf("feature %q already exists", id)
+	}
+	groupID, err := importGroup(state, feat.Properties)
 	if err != nil {
-		return geom.Point{}, err
+		return 0, 0, err
 	}
-	id := propertyString(feat.Properties, "id")
+	item := project.Feature{ID: id, Kind: kind, PointIDs: pointIDs, Code: propertyString(feat.Properties, "code"), Description: propertyString(feat.Properties, "description", "desc"), TerrainRole: propertyString(feat.Properties, "terrain_role"), GroupID: groupID}
+	if kind == project.FeaturePolygon {
+		item.TerrainRole = ""
+	}
+	if err := validateImportedFeature(state, item); err != nil {
+		return 0, 0, err
+	}
+	state.features[id] = item
+	return added, 1, nil
+}
+
+func importGroup(state *importState, props map[string]any) (string, error) {
+	id := propertyString(props, "group")
 	if id == "" {
-		id = featureIDString(feat.ID)
+		return "", nil
 	}
-	if id == "" {
-		id = nextPointID(state.points)
+	layer := propertyString(props, "layer")
+	color, err := strconv.Atoi(propertyString(props, "color"))
+	if layer == "" || err != nil || color < 1 || color > 255 {
+		return "", fmt.Errorf("group %q requires layer and color 1..255", id)
 	}
-	return ensurePoint(state, id, coord, propertyString(feat.Properties, "code"), propertyString(feat.Properties, "description", "desc"), true)
+	group := project.Group{ID: id, Layer: layer, Color: color}
+	if old, ok := state.groups[id]; ok && old != group {
+		return "", fmt.Errorf("conflicting definition for group %q", id)
+	}
+	for existingID, old := range state.groups {
+		if existingID != id && strings.EqualFold(old.Layer, layer) {
+			return "", fmt.Errorf("group layer %q already exists", layer)
+		}
+	}
+	state.groups[id] = group
+	return id, nil
 }
 
-func ensurePoint(state importState, id string, coord []float64, code, description string, compareAttrs bool) (geom.Point, error) {
-	pt := geom.Point{
-		ID:          id,
-		Easting:     coord[0],
-		Northing:    coord[1],
-		Elevation:   coordinateElevation(coord),
-		Code:        code,
-		Description: description,
+func validateImportedFeature(state *importState, item project.Feature) error {
+	if item.Kind != project.FeaturePolygon && item.TerrainRole != "" && item.TerrainRole != "standard" && item.TerrainRole != "ridge" && item.TerrainRole != "drain" {
+		return fmt.Errorf("invalid terrain_role %q", item.TerrainRole)
 	}
-	if existing, ok := state.points[id]; ok {
-		if !pointsEqual(existing, pt, compareAttrs) {
-			return geom.Point{}, fmt.Errorf("point %q already exists", id)
+	if item.Kind != project.FeaturePolygon {
+		return nil
+	}
+	area := 0.0
+	for i := range item.PointIDs {
+		a, b := state.points[item.PointIDs[i]], state.points[item.PointIDs[(i+1)%len(item.PointIDs)]]
+		area += a.Easting*b.Northing - b.Easting*a.Northing
+	}
+	if math.Abs(area) <= 1e-9 {
+		return fmt.Errorf("polygon %q is zero-area", item.ID)
+	}
+	for i := range item.PointIDs {
+		a, b := state.points[item.PointIDs[i]], state.points[item.PointIDs[(i+1)%len(item.PointIDs)]]
+		for j := i + 1; j < len(item.PointIDs); j++ {
+			if j == i+1 || i == 0 && j == len(item.PointIDs)-1 {
+				continue
+			}
+			c, d := state.points[item.PointIDs[j]], state.points[item.PointIDs[(j+1)%len(item.PointIDs)]]
+			if geometrySegmentsCross(a, b, c, d) {
+				return fmt.Errorf("polygon %q self-intersects", item.ID)
+			}
 		}
-		return existing, nil
 	}
-	return pt, nil
+	return nil
 }
 
-func importLineStringFeature(state importState, feat feature) (int, int, error) {
-	var rawCoords []json.RawMessage
-	if err := json.Unmarshal(feat.Geometry.Coordinates, &rawCoords); err != nil {
-		return 0, 0, fmt.Errorf("invalid LineString coordinates")
+func geometrySegmentsCross(a, b, c, d geom.Point) bool {
+	orient := func(p, q, r geom.Point) float64 {
+		return (q.Easting-p.Easting)*(r.Northing-p.Northing) - (q.Northing-p.Northing)*(r.Easting-p.Easting)
 	}
-	return importRawLine(state, feat, rawCoords, 0)
+	onSegment := func(p, q, r geom.Point) bool {
+		return q.Easting >= math.Min(p.Easting, r.Easting)-1e-9 && q.Easting <= math.Max(p.Easting, r.Easting)+1e-9 &&
+			q.Northing >= math.Min(p.Northing, r.Northing)-1e-9 && q.Northing <= math.Max(p.Northing, r.Northing)+1e-9
+	}
+	o1, o2, o3, o4 := orient(a, b, c), orient(a, b, d), orient(c, d, a), orient(c, d, b)
+	if math.Abs(o1) <= 1e-9 && onSegment(a, c, b) || math.Abs(o2) <= 1e-9 && onSegment(a, d, b) ||
+		math.Abs(o3) <= 1e-9 && onSegment(c, a, d) || math.Abs(o4) <= 1e-9 && onSegment(c, b, d) {
+		return true
+	}
+	return (o1 > 0) != (o2 > 0) && (o3 > 0) != (o4 > 0)
 }
 
-func importMultiLineStringFeature(state importState, feat feature) (int, int, error) {
-	var rawLines [][]json.RawMessage
-	if err := json.Unmarshal(feat.Geometry.Coordinates, &rawLines); err != nil {
-		return 0, 0, fmt.Errorf("invalid MultiLineString coordinates")
+func pointCoordinate(pt geom.Point) []float64 {
+	out := []float64{pt.Easting, pt.Northing}
+	if pt.Elevation != nil {
+		out = append(out, *pt.Elevation)
 	}
-	totalLines := 0
-	totalPoints := 0
-	for i, rawLine := range rawLines {
-		lines, points, err := importRawLine(state, feat, rawLine, i)
-		if err != nil {
-			return totalLines, totalPoints, err
-		}
-		totalLines += lines
-		totalPoints += points
-	}
-	return totalLines, totalPoints, nil
-}
-
-func importRawLine(state importState, feat feature, rawCoords []json.RawMessage, lineIndex int) (int, int, error) {
-	if len(rawCoords) < 2 {
-		return 0, 0, fmt.Errorf("LineString requires at least 2 coordinates")
-	}
-	vertices := make([]geom.Point, 0, len(rawCoords))
-	pointCount := 0
-	fromID := propertyString(feat.Properties, "from")
-	toID := propertyString(feat.Properties, "to")
-	for idx, rawCoord := range rawCoords {
-		coord, err := parseCoordinate(rawCoord)
-		if err != nil {
-			return 0, 0, err
-		}
-		explicitID := ""
-		switch {
-		case idx == 0:
-			explicitID = fromID
-		case idx == len(rawCoords)-1:
-			explicitID = toID
-		}
-		if explicitID == "" {
-			explicitID = nextPointID(state.points)
-		}
-		pt, err := ensurePoint(state, explicitID, coord, "", "", false)
-		if err != nil {
-			return 0, 0, err
-		}
-		if _, existed := state.points[pt.ID]; !existed {
-			pointCount++
-		}
-		state.points[pt.ID] = pt
-		vertices = append(vertices, pt)
-	}
-
-	baseID := propertyString(feat.Properties, "id")
-	if baseID == "" {
-		baseID = featureIDString(feat.ID)
-	}
-	code := propertyString(feat.Properties, "code")
-	description := propertyString(feat.Properties, "description", "desc")
-	terrainRole := propertyString(feat.Properties, "terrain_role")
-	if terrainRole != "" && terrainRole != "standard" && terrainRole != "ridge" && terrainRole != "drain" {
-		return 0, 0, fmt.Errorf("invalid terrain_role %q", terrainRole)
-	}
-
-	lineCount := 0
-	segments := len(vertices) - 1
-	for i := 0; i < segments; i++ {
-		id := nextImportedLineID(state.lines, baseID, lineIndex, i, segments)
-		state.lines[id] = project.Line{
-			ID:          id,
-			From:        vertices[i].ID,
-			To:          vertices[i+1].ID,
-			Code:        code,
-			Description: description,
-			TerrainRole: terrainRole,
-		}
-		lineCount++
-	}
-	return lineCount, pointCount, nil
+	return out
 }
 
 func parseCoordinate(raw json.RawMessage) ([]float64, error) {
 	var coord []float64
-	if err := json.Unmarshal(raw, &coord); err != nil {
-		return nil, fmt.Errorf("invalid coordinate")
-	}
-	if len(coord) < 2 || len(coord) > 3 {
+	if err := json.Unmarshal(raw, &coord); err != nil || len(coord) < 2 || len(coord) > 3 {
 		return nil, fmt.Errorf("coordinate must have 2 or 3 numbers")
 	}
 	return coord, nil
 }
 
-func coordinateElevation(coord []float64) *float64 {
-	if len(coord) < 3 {
-		return nil
+func makePoint(id string, coord []float64) geom.Point {
+	pt := geom.Point{ID: id, Easting: coord[0], Northing: coord[1]}
+	if len(coord) == 3 {
+		z := coord[2]
+		pt.Elevation = &z
 	}
-	v := coord[2]
-	return &v
+	return pt
 }
 
-func pointsEqual(a, b geom.Point, compareAttrs bool) bool {
-	if a.ID != b.ID || a.Easting != b.Easting || a.Northing != b.Northing {
+func pointsEqual(a, b geom.Point) bool {
+	return samePosition(a, b) && a.Code == b.Code && a.Description == b.Description && a.GroupID == b.GroupID
+}
+
+func samePosition(a, b geom.Point) bool {
+	if a.Easting != b.Easting || a.Northing != b.Northing || (a.Elevation == nil) != (b.Elevation == nil) {
 		return false
 	}
-	if compareAttrs && (a.Code != b.Code || a.Description != b.Description) {
+	return a.Elevation == nil || *a.Elevation == *b.Elevation
+}
+
+func coordinatesEqual(a, b []float64) bool {
+	if len(a) != len(b) {
 		return false
 	}
-	switch {
-	case a.Elevation == nil && b.Elevation == nil:
-		return true
-	case a.Elevation == nil || b.Elevation == nil:
-		return !compareAttrs
-	default:
-		return *a.Elevation == *b.Elevation
+	for i := range a {
+		if a[i] != b[i] {
+			return false
+		}
 	}
+	return true
 }
 
 func propertyString(props map[string]any, keys ...string) string {
 	for _, key := range keys {
-		if props == nil {
-			return ""
-		}
 		if value, ok := props[key]; ok {
 			return scalarString(value)
 		}
@@ -376,29 +359,24 @@ func scalarString(value any) string {
 	switch v := value.(type) {
 	case string:
 		return v
-	case json.Number:
-		return v.String()
 	case float64:
 		return strconv.FormatFloat(v, 'f', -1, 64)
-	case bool:
-		if v {
-			return "true"
-		}
-		return "false"
 	default:
 		return ""
 	}
 }
 
-func featureIDString(value any) string {
-	return scalarString(value)
+func first(values ...string) string {
+	for _, value := range values {
+		if value != "" {
+			return value
+		}
+	}
+	return ""
 }
 
 func mustMarshal(value any) json.RawMessage {
-	data, err := json.Marshal(value)
-	if err != nil {
-		panic(err)
-	}
+	data, _ := json.Marshal(value)
 	return data
 }
 
@@ -410,53 +388,41 @@ func clonePoints(src map[string]geom.Point) map[string]geom.Point {
 	return dst
 }
 
-func cloneLines(src map[string]project.Line) map[string]project.Line {
-	dst := make(map[string]project.Line, len(src))
-	for id, line := range src {
-		dst[id] = line
+func cloneFeatures(src map[string]project.Feature) map[string]project.Feature {
+	dst := make(map[string]project.Feature, len(src))
+	for id, item := range src {
+		item.PointIDs = append([]string(nil), item.PointIDs...)
+		dst[id] = item
+	}
+	return dst
+}
+
+func cloneGroups(src map[string]project.Group) map[string]project.Group {
+	dst := make(map[string]project.Group, len(src))
+	for id, group := range src {
+		dst[id] = group
 	}
 	return dst
 }
 
 func nextPointID(points map[string]geom.Point) string {
-	maxID := 0
+	max := 0
 	for id := range points {
-		n, err := strconv.Atoi(id)
-		if err == nil && n > maxID {
-			maxID = n
+		if n, err := strconv.Atoi(id); err == nil && n > max {
+			max = n
 		}
 	}
-	return strconv.Itoa(maxID + 1)
+	return strconv.Itoa(max + 1)
 }
 
-func nextLineID(lines map[string]project.Line) string {
-	maxID := 0
-	for id := range lines {
-		if len(id) < 2 || id[0] != 'L' {
-			continue
-		}
-		n, err := strconv.Atoi(id[1:])
-		if err == nil && n > maxID {
-			maxID = n
+func nextFeatureID(features map[string]project.Feature) string {
+	max := 0
+	for id := range features {
+		if len(id) > 1 && id[0] == 'L' {
+			if n, err := strconv.Atoi(id[1:]); err == nil && n > max {
+				max = n
+			}
 		}
 	}
-	return fmt.Sprintf("L%d", maxID+1)
-}
-
-func nextImportedLineID(lines map[string]project.Line, baseID string, lineIndex, segmentIndex, segments int) string {
-	if baseID == "" {
-		return nextLineID(lines)
-	}
-	if segments == 1 && lineIndex == 0 {
-		if _, exists := lines[baseID]; !exists {
-			return baseID
-		}
-	}
-	candidate := fmt.Sprintf("%s_%d", baseID, lineIndex+segmentIndex+1)
-	for {
-		if _, exists := lines[candidate]; !exists {
-			return candidate
-		}
-		candidate += "_1"
-	}
+	return fmt.Sprintf("L%d", max+1)
 }

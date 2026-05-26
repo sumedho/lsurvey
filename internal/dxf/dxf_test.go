@@ -13,7 +13,7 @@ func TestWriteIncludesPointsLabelsLinesAndCodeLayers(t *testing.T) {
 	p.SetDisplayPrecision(2)
 	p.Points["1"] = geom.Point{ID: "1", Northing: 100, Easting: 200, Code: "PEG"}
 	p.Points["2"] = geom.Point{ID: "2", Northing: 110, Easting: 210}
-	p.Lines["L1"] = project.Line{ID: "L1", From: "1", To: "2", Code: "BOUNDARY"}
+	p.Features["L1"] = project.Feature{ID: "L1", Kind: project.FeatureLine, PointIDs: []string{"1", "2"}, Code: "BOUNDARY"}
 	p.ContourSets["C1"] = project.ContourSet{
 		ID: "C1",
 		Polylines: []project.ContourPolyline{
@@ -149,6 +149,40 @@ func TestWriteUsesSmoothedPolylineRepresentationWhenRawIsRetained(t *testing.T) 
 	got := out.String()
 	if !strings.Contains(got, "10\n10\n20\n10\n") || strings.Contains(got, "10\n1\n20\n1\n") {
 		t.Fatalf("DXF should use presentation polylines:\n%s", got)
+	}
+}
+
+func TestWriteUsesGroupStyleForPolylineAndPolygon(t *testing.T) {
+	p := project.New("test")
+	p.Groups["BND"] = project.Group{ID: "BND", Layer: "LOT BOUNDARY", Color: 1}
+	for id, xy := range map[string][2]float64{"1": {0, 0}, "2": {10, 0}, "3": {10, 10}} {
+		p.Points[id] = geom.Point{ID: id, Easting: xy[0], Northing: xy[1]}
+	}
+	p.Features["P1"] = project.Feature{ID: "P1", Kind: project.FeaturePolyline, PointIDs: []string{"1", "2", "3"}, GroupID: "BND"}
+	p.Features["A1"] = project.Feature{ID: "A1", Kind: project.FeaturePolygon, PointIDs: []string{"1", "2", "3"}, GroupID: "BND"}
+	var out strings.Builder
+	if err := Write(&out, p); err != nil {
+		t.Fatal(err)
+	}
+	got := out.String()
+	if !strings.Contains(got, "2\nLOT_BOUNDARY\n") || strings.Count(got, "8\nLOT_BOUNDARY\n62\n1\n") != 2 || !strings.Contains(got, "70\n1\n") {
+		t.Fatalf("styled feature layers missing:\n%s", got)
+	}
+}
+
+func TestWritePreservesElevatedPolylineVerticesAs3DPolyline(t *testing.T) {
+	p := project.New("test")
+	z := 4.5
+	p.Points["1"] = geom.Point{ID: "1", Easting: 0, Northing: 0, Elevation: &z}
+	p.Points["2"] = geom.Point{ID: "2", Easting: 10, Northing: 0}
+	p.Features["P1"] = project.Feature{ID: "P1", Kind: project.FeaturePolyline, PointIDs: []string{"1", "2"}}
+	var out strings.Builder
+	if err := Write(&out, p); err != nil {
+		t.Fatal(err)
+	}
+	got := out.String()
+	if !strings.Contains(got, "0\nPOLYLINE\n") || !strings.Contains(got, "0\nVERTEX\n") || !strings.Contains(got, "30\n4.5\n") {
+		t.Fatalf("3D polyline missing vertex elevation:\n%s", got)
 	}
 }
 

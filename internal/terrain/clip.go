@@ -15,6 +15,12 @@ type clipRegions struct {
 	ExclusionLines []string
 }
 
+type clipEdge struct {
+	ID   string
+	From string
+	To   string
+}
+
 func resolveClipRegions(p *project.Project, opts Options) (clipRegions, error) {
 	var out clipRegions
 	if len(opts.BoundaryCodes) > 0 {
@@ -59,24 +65,44 @@ func ringsByCodes(p *project.Project, codes []string, label string) ([][]project
 		}
 		selected[code] = true
 	}
-	var lines []project.Line
+	var edges []clipEdge
+	var rings [][]project.ContourVertex
 	var ids []string
-	for _, line := range p.SortedLines() {
-		if selected[line.Code] {
-			lines = append(lines, line)
-			ids = append(ids, line.ID)
+	for _, feature := range p.SortedFeatures() {
+		if !selected[feature.Code] {
+			continue
+		}
+		ids = append(ids, feature.ID)
+		if feature.Kind == project.FeaturePolygon {
+			ring := make([]project.ContourVertex, 0, len(feature.PointIDs))
+			for _, pointID := range feature.PointIDs {
+				if _, ok := p.Points[pointID]; !ok {
+					return nil, nil, fmt.Errorf("%s feature %q point %q not found", label, feature.ID, pointID)
+				}
+				ring = append(ring, contourVertex(p, pointID))
+			}
+			if len(ring) < 3 || ringSelfIntersects(ring) {
+				return nil, nil, fmt.Errorf("%s polygon %q is invalid", label, feature.ID)
+			}
+			rings = append(rings, ring)
+			continue
+		}
+		for _, segment := range p.FeatureSegments(feature) {
+			edges = append(edges, clipEdge{
+				ID: fmt.Sprintf("%s:%d", feature.ID, segment.Index+1), From: segment.From, To: segment.To,
+			})
 		}
 	}
-	if len(lines) == 0 {
-		return nil, nil, fmt.Errorf("%s codes match no lines", label)
+	if len(ids) == 0 {
+		return nil, nil, fmt.Errorf("%s codes match no features", label)
 	}
-	rings, err := assembleRings(p, lines, label)
-	return rings, ids, err
+	assembled, err := assembleRings(p, edges, label)
+	return append(rings, assembled...), ids, err
 }
 
-func assembleRings(p *project.Project, lines []project.Line, label string) ([][]project.ContourVertex, error) {
-	incident := map[string][]project.Line{}
-	unused := map[string]project.Line{}
+func assembleRings(p *project.Project, lines []clipEdge, label string) ([][]project.ContourVertex, error) {
+	incident := map[string][]clipEdge{}
+	unused := map[string]clipEdge{}
 	for _, line := range lines {
 		if line.From == line.To {
 			return nil, fmt.Errorf("%s line %q has identical endpoints", label, line.ID)
@@ -108,7 +134,7 @@ func assembleRings(p *project.Project, lines []project.Line, label string) ([][]
 		ring := []project.ContourVertex{contourVertex(p, start)}
 		for current != start {
 			ring = append(ring, contourVertex(p, current))
-			var next *project.Line
+			var next *clipEdge
 			for _, line := range incident[current] {
 				if _, ok := unused[line.ID]; ok {
 					copy := line
