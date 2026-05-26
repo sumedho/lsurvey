@@ -1100,6 +1100,20 @@ func TestPointCodeStyleDefaultsApplyOnlyToUngroupedNewPoints(t *testing.T) {
 	}
 }
 
+func TestCodeStyleListReportsUnmappedStyleGroups(t *testing.T) {
+	p := project.New("test")
+	mustExec(t, p, "group add TREE layer=VEGETATION color=3 desc=trees")
+	list, err := Execute(p, "code style list")
+	if err != nil || list.Changed {
+		t.Fatalf("style list=%+v err=%v", list, err)
+	}
+	for _, want := range []string{"1 style groups", "TREE layer=VEGETATION color=3 desc=trees", "0 point code styles"} {
+		if !strings.Contains(list.Message, want) {
+			t.Fatalf("style list=%q missing %q", list.Message, want)
+		}
+	}
+}
+
 func TestPolygonRejectsSelfIntersectionAndTerrainRole(t *testing.T) {
 	p := project.New("test")
 	for _, command := range []string{"pt add 1 0 0", "pt add 2 10 10", "pt add 3 0 10", "pt add 4 10 0"} {

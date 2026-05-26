@@ -24,6 +24,7 @@ see [TUTORIAL.md](/Users/sumedho/Documents/repos/lsurvey/TUTORIAL.md).
 - Stored lines, polylines, and polygons with code, description, and style-group fields.
 - Polygon area/boundary schedules and DXF area labels.
 - Reusable point-code style libraries for default point layer/color assignment.
+- Full-screen code styling editor with a nominal AutoCAD ACI color palette.
 - Point and line list panels with filtering and sorting.
 - Command completion hints and command history.
 - Full-screen help with styled sections.
@@ -121,6 +122,7 @@ The command line is the main way to work with the project. Type `help` or press
 
 - `F1`: open searchable command help.
 - `F2`: toggle the ASCII map view.
+- `F3`: open the code styling editor.
 - `/`: start a point filter command.
 - `Tab`: advance the current completion one input at a time. For point IDs
   being created, completion suggests the next unused integer point ID.
@@ -128,7 +130,7 @@ The command line is the main way to work with the project. Type `help` or press
 - `Up` / `Down`: browse previous commands when the command input is empty.
 - `Alt+s`: cycle point sort field.
 - `Alt+d`: toggle ascending/descending point sort direction.
-- `Esc`: return from help detail, clear a help filter, close help, or close the map view.
+- `Esc`: return from help detail, clear a help filter, close help, the map view, or the code styling editor.
 - `Ctrl+C`: quit.
 
 Map keys:
@@ -241,6 +243,8 @@ polygons are implicitly closed area features and are used for clipping rings.
 `polygon report` provides area, perimeter, and ordered boundary bearings and
 distances. Point-code styles assign a group's layer and color to newly created
 or imported coded points only when they do not already have an explicit group.
+`code style list` reports both available style groups and point-code defaults,
+including groups that have not yet been assigned to a point code.
 
 ## Calculation Commands
 
@@ -424,6 +428,7 @@ map contours
 map fit
 map zoom in
 map zoom out
+style
 help
 help <command>
 ```
@@ -439,11 +444,22 @@ map
 map lines
 map contours
 map fit
+style
 help rad
 ```
 
 Within the help browser, use `/` to fuzzy-filter commands, `Enter` to open the
 selected command, and `Esc` to return to results or close help.
+
+Press `F3` or run `style` to edit style groups and point-code defaults, and to
+import or export reusable code libraries. The screen displays selectable
+AutoCAD ACI entries with nominal RGB previews; AutoCAD display, background,
+and plot-style configuration can alter their rendered appearance.
+Use `g` to add a style group and `c` to add a point-code default; these actions
+are available regardless of which styling pane is active.
+The style-group and point-code panes display column headers and their visible
+row range; select a pane with `Tab`, then scroll it with arrow keys, page keys,
+or the mouse wheel.
 
 ## Import And Export Commands
 

@@ -78,6 +78,8 @@ id,easting,northing,elevation,code,description
 - Point-code style defaults map exact point codes to style groups, apply only
   to newly created/imported points without explicit groups, and persist in
   `.srv`; reusable `.codes.json` library imports must be atomic on conflicts.
+- `code style list` reports both style groups and point-code defaults, including
+  style groups that are not yet mapped to a point code.
 - `polygon report <id|all>` reports stored-polygon area, perimeter, and
   ordered boundary legs; `export boundarycsv` writes schedule rows.
 - `offset` must work from either two point IDs or one stored line ID.
@@ -159,6 +161,14 @@ id,easting,northing,elevation,code,description
 - `F1` opens searchable command help; `/` filters commands and `Enter` opens
   detail for the selected command.
 - `F2` toggles the ASCII map.
+- `F3` opens the code styling editor for style groups, point-code defaults, and
+  reusable code libraries; it shows nominal AutoCAD ACI color previews.
+- In the code styling editor, `g` creates a style group and `c` creates a
+  point-code default without requiring pane focus.
+- Style-group and point-code panes show table headers and scroll using arrows,
+  page keys, or the mouse wheel while active.
+- Code styling screen saves must submit the existing group, code-style, and
+  import/export commands so undo and audit behavior remains consistent.
 - Map view supports panning with arrows, zoom in/out, fit-to-points, and line
   overlay.
 - Map view starts with point ID labels on each entry; `i` toggles ID/code

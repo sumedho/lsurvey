@@ -72,7 +72,7 @@ func All() []Command {
 		{Group: "Feature Geometry & Styling", Name: "group list", Usage: "group list", Description: "Report the number of style groups.", Examples: []string{"group list"}},
 		{Group: "Feature Geometry & Styling", Name: "code style set", Usage: "code style set <code> group=<id>", Description: "Assign a style-group default for newly created or imported coded points.", Examples: []string{"code style set PEG group=BOUND"}},
 		{Group: "Feature Geometry & Styling", Name: "code style del", Usage: "code style del <code>", Description: "Remove a point-code style default without changing existing points.", Examples: []string{"code style del PEG"}},
-		{Group: "Feature Geometry & Styling", Name: "code style list", Usage: "code style list", Description: "List stored point-code style defaults.", Examples: []string{"code style list"}},
+		{Group: "Feature Geometry & Styling", Name: "code style list", Usage: "code style list", Description: "List style groups and stored point-code defaults.", Examples: []string{"code style list"}},
 		{Group: "Feature Geometry & Styling", Name: "line add", Usage: "line add <id> <p1> <p2> [code] [group=<id>] [terrain=standard|ridge|drain]", Description: "Create a coded line, optionally assigning style and terrain intent.", Examples: []string{"line add L1 1 2 BOUNDARY group=BOUND", "line add R1 1 2 FEATURE terrain=ridge"}},
 		{Group: "Feature Geometry & Styling", Name: "polyline add", Usage: "polyline add <id> <p1> <p2> [<pN>...] [code=<code>] [group=<id>] [terrain=standard|ridge|drain]", Description: "Create ordered open linework.", Examples: []string{"polyline add KERB 1 2 3 code=KERB group=ROAD"}},
 		{Group: "Feature Geometry & Styling", Name: "polygon add", Usage: "polygon add <id> <p1> <p2> <p3> [<pN>...] [code=<code>] [group=<id>]", Description: "Create an implicitly closed area feature.", Examples: []string{"polygon add LOT1 1 2 3 4 code=BOUND group=BOUND"}},
@@ -94,6 +94,7 @@ func All() []Command {
 		{Group: "Interface", Name: "clear filter", Usage: "clear filter", Description: "Clear the point list filter.", Examples: []string{"clear filter"}},
 		{Group: "Interface", Name: "sort", Usage: "sort <id|north|east|elev|code|desc> [asc|desc]", Description: "Sort the point list.", Examples: []string{"sort code", "sort north desc"}},
 		{Group: "Interface", Name: "map", Usage: "map [lines|contours|fit|zoom in|zoom out]", Description: "Toggle the full-screen ASCII map, where i toggles point ID/code labels.", Examples: []string{"map", "map lines", "map contours", "map fit"}},
+		{Group: "Interface", Name: "style", Usage: "style", Description: "Open the code styling editor for groups, point-code defaults, code libraries, and nominal AutoCAD ACI colors.", Examples: []string{"style"}, Notes: []string{"Group and point-code tables scroll with arrows, page keys, or the mouse wheel while active.", "The palette is a nominal ACI preview; AutoCAD display and plot configuration can alter appearance."}},
 		{Group: "Interface", Name: "help", Usage: "help [command]", Description: "Open searchable command help, or a specific command detail page.", Examples: []string{"help", "help rad"}},
 		{Group: "Interface", Name: "quit", Usage: "quit", Description: "Exit the application.", Examples: []string{"quit"}},
 	}
@@ -152,7 +153,7 @@ func Render(query string) string {
 		}
 		fmt.Fprintf(&b, "  %-28s %s\n", cmd.Usage, cmd.Description)
 	}
-	b.WriteString("\nKeys: F1 opens searchable help, F2 toggles map, / searches help or starts a point filter from the main view, Tab accepts a command completion, Ctrl+N/Ctrl+P cycle completions, Up/Down browse command history, arrow keys pan map, +/- zoom map, f fits map, l toggles map lines, c toggles map contours, i toggles map point ID/code labels, alt+s cycles sort fields, alt+d toggles direction, Esc returns/closes help or closes map, Ctrl+C quits.\n")
+	b.WriteString("\nKeys: F1 opens searchable help, F2 toggles map, F3 opens code styling, / searches help or starts a point filter from the main view, Tab accepts a command completion, Ctrl+N/Ctrl+P cycle completions, Up/Down browse command history, arrow keys pan map, +/- zoom map, f fits map, l toggles map lines, c toggles map contours, i toggles map point ID/code labels, alt+s cycles sort fields, alt+d toggles direction, Esc returns/closes help, map, or code styling, Ctrl+C quits.\n")
 	return b.String()
 }
 
@@ -189,7 +190,7 @@ func RenderStyled(query string) string {
 		b.WriteByte('\n')
 	}
 	b.WriteByte('\n')
-	b.WriteString(helpKeyStyle.Render("Keys: F1 help  / search help  Enter details  Esc back/close  F2 map  arrows pan map  +/- zoom  f fit  l lines  c contours  i point labels"))
+	b.WriteString(helpKeyStyle.Render("Keys: F1 help  / search help  Enter details  Esc back/close  F2 map  F3 code styling  arrows pan map  +/- zoom  f fit  l lines  c contours  i point labels"))
 	return b.String()
 }
 

@@ -566,13 +566,18 @@ func execCode(p *project.Project, f []string) (Result, error) {
 		if len(f) != 3 {
 			return Result{}, fmt.Errorf("usage: code style list")
 		}
+		groups := p.SortedGroups()
 		codes := make([]string, 0, len(p.PointCodeStyles))
 		for code := range p.PointCodeStyles {
 			codes = append(codes, code)
 		}
 		sort.Strings(codes)
 		var b strings.Builder
-		fmt.Fprintf(&b, "%d point code styles", len(codes))
+		fmt.Fprintf(&b, "%d style groups", len(groups))
+		for _, group := range groups {
+			fmt.Fprintf(&b, "\n%s layer=%s color=%d desc=%s", group.ID, group.Layer, group.Color, group.Description)
+		}
+		fmt.Fprintf(&b, "\n%d point code styles", len(codes))
 		for _, code := range codes {
 			fmt.Fprintf(&b, "\n%s group=%s", code, p.PointCodeStyles[code])
 		}

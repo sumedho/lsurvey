@@ -7,7 +7,7 @@ import (
 
 func TestRenderIncludesAngleRuleAndCommands(t *testing.T) {
 	got := Render("")
-	for _, want := range []string{"dd.mmsshhhh", "pt add", "rad", "close <p1> <p2> <p3> ...", "bearing add <a> <b>", "dist sub <a> <b>", "shift <base>", "rotate <base>", "scale apply <base>", "transform fit <src1>", "line gen <code>", "polyline add", "polygon add", "polygon report", "group add", "code style set", "export dxf", "export geojson", "export landxml", "export boundarycsv", "import codes", "filter <text>", "desc <project description>", "undo", "history info <n>", "info", "i toggles map point ID/code labels"} {
+	for _, want := range []string{"dd.mmsshhhh", "pt add", "rad", "close <p1> <p2> <p3> ...", "bearing add <a> <b>", "dist sub <a> <b>", "shift <base>", "rotate <base>", "scale apply <base>", "transform fit <src1>", "line gen <code>", "polyline add", "polygon add", "polygon report", "group add", "code style set", "export dxf", "export geojson", "export landxml", "export boundarycsv", "import codes", "filter <text>", "style", "F3 opens code styling", "desc <project description>", "undo", "history info <n>", "info", "i toggles map point ID/code labels"} {
 		if !strings.Contains(got, want) {
 			t.Fatalf("help missing %q:\n%s", want, got)
 		}
@@ -26,7 +26,7 @@ func TestFindCommand(t *testing.T) {
 
 func TestSuggestionsIncludeUsageAndExamples(t *testing.T) {
 	got := strings.Join(Suggestions(), "\n")
-	for _, want := range []string{"rad <from>", "save job", "trav show", "close 1 2 3", "bearing add <a> <b>", "dist sub 12.5 15", "trav leg <azimuth|bearing> <distance> [vdiff <delta>] [code]", "import geojson <file>", "export geojson <file>", "export landxml <file>", "export boundarycsv <file>", "import codes <file>", "shift <base> [east=<coordinate>] [north=<coordinate>] [elev=<coordinate>]", "rotate 100 -15.3000", "scale apply <base> csf=<factor> [system=<label>]", "scale reverse", "transform fit <src1> <dst1>", "line gen <code>", "polygon report <id|all>", "code style set <code>", "undo", "redo", "history limit=10", "info"} {
+	for _, want := range []string{"rad <from>", "save job", "trav show", "close 1 2 3", "bearing add <a> <b>", "dist sub 12.5 15", "trav leg <azimuth|bearing> <distance> [vdiff <delta>] [code]", "import geojson <file>", "export geojson <file>", "export landxml <file>", "export boundarycsv <file>", "import codes <file>", "shift <base> [east=<coordinate>] [north=<coordinate>] [elev=<coordinate>]", "rotate 100 -15.3000", "scale apply <base> csf=<factor> [system=<label>]", "scale reverse", "transform fit <src1> <dst1>", "line gen <code>", "polygon report <id|all>", "code style set <code>", "style", "undo", "redo", "history limit=10", "info"} {
 		if !strings.Contains(got, want) {
 			t.Fatalf("suggestions missing %q:\n%s", want, got)
 		}
@@ -63,6 +63,7 @@ func TestCommandsHaveLogicalGroups(t *testing.T) {
 		"polygon add":    "Feature Geometry & Styling",
 		"export landxml": "Import & Export",
 		"help":           "Interface",
+		"style":          "Interface",
 	} {
 		command, ok := Find(name)
 		if !ok {

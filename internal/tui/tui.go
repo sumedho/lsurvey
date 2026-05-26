@@ -24,6 +24,7 @@ const (
 	ModeMain
 	ModeHelp
 	ModeMap
+	ModeStyle
 )
 
 const splashDuration = 1500 * time.Millisecond
@@ -62,6 +63,7 @@ type Model struct {
 	mode       Mode
 	prior      Mode
 	mapState   MapState
+	style      StyleState
 	focus      mainFocus
 
 	width  int
@@ -122,6 +124,7 @@ func newModel(p *project.Project, path, version string, showSplash bool) Model {
 		sortAsc:    true,
 		histIdx:    -1,
 		mapState:   newMapState(),
+		style:      newStyleState(),
 		message:    "F1 opens help. Tab accepts completions or switches panes when input is blank. Use / to filter, alt+s/alt+d to sort.",
 	}
 	if showSplash {
@@ -184,6 +187,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if handled, cmd := m.handleMainMouse(msg); handled {
 				return m, cmd
 			}
+		}
+		if m.mode == ModeStyle && isWheelMouse(msg) {
+			return m.handleStyleMouse(msg)
 		}
 	case tea.KeyMsg:
 		if m.mode == ModeSplash {
@@ -280,6 +286,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			return m, nil
 		}
+		if m.mode == ModeStyle {
+			return m.updateStyle(msg)
+		}
 
 		switch msg.String() {
 		case "ctrl+c":
@@ -319,6 +328,11 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "f2":
 			if m.input.Value() == "" {
 				m.toggleMap()
+				return m, nil
+			}
+		case "f3":
+			if m.input.Value() == "" {
+				m.enterStyle()
 				return m, nil
 			}
 		case "/":
@@ -371,6 +385,9 @@ func (m Model) View() string {
 	}
 	if m.mode == ModeMap {
 		return renderMap(m.project, m.mapState, max(60, m.width), max(18, m.height), m.project.DisplayPrecision())
+	}
+	if m.mode == ModeStyle {
+		return m.renderStyle(max(60, m.width), max(18, m.height))
 	}
 
 	m.syncMainViewports()
@@ -465,6 +482,12 @@ func (m *Model) ExecuteCommand(command string) tea.Cmd {
 		m.openHelp(query)
 	case "map":
 		m.handleMapCommand(fields)
+	case "style":
+		if len(fields) != 1 {
+			m.setError("usage: style")
+			return nil
+		}
+		m.enterStyle()
 	default:
 		outcome, err := m.session.Execute(command)
 		if err != nil {
@@ -474,6 +497,7 @@ func (m *Model) ExecuteCommand(command string) tea.Cmd {
 		m.syncSessionState()
 		if outcome.ProjectReplaced {
 			m.mapState = newMapState()
+			m.style = newStyleState()
 		}
 		m.message = outcome.Message
 	}
@@ -517,8 +541,8 @@ func (m *Model) showHelpDetail(query string, returnToBrowser bool) {
 }
 
 func (m Model) priorMode() Mode {
-	if m.prior == ModeMap {
-		return ModeMap
+	if m.prior == ModeMap || m.prior == ModeStyle {
+		return m.prior
 	}
 	return ModeMain
 }
