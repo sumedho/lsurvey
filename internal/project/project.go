@@ -6,12 +6,13 @@ import (
 	"os"
 	"sort"
 	"strconv"
+	"strings"
 	"time"
 
 	"lsurvey/internal/geom"
 )
 
-const CurrentSchemaVersion = 7
+const CurrentSchemaVersion = 8
 
 // Line is retained only for decoding project files written before feature geometry.
 type Line struct {
@@ -134,6 +135,23 @@ type GridGroundConversion struct {
 	CSF            float64 `json:"csf"`
 }
 
+type HorizontalCRS struct {
+	Datum      string `json:"datum"`
+	Projection string `json:"projection"`
+	Zone       int    `json:"zone"`
+}
+
+func (c HorizontalCRS) Label() string {
+	if c.Projection == "MGA" && c.Zone != 0 {
+		return fmt.Sprintf("MGA%s_ZONE%d", strings.TrimPrefix(c.Datum, "GDA"), c.Zone)
+	}
+	return c.Datum
+}
+
+func (c HorizontalCRS) Equal(other HorizontalCRS) bool {
+	return c.Datum == other.Datum && c.Projection == other.Projection && c.Zone == other.Zone
+}
+
 type Project struct {
 	SchemaVersion   int                   `json:"schema_version"`
 	AppVersion      string                `json:"app_version,omitempty"`
@@ -149,6 +167,7 @@ type Project struct {
 	ContourSets     map[string]ContourSet `json:"contour_sets,omitempty"`
 	Traverse        *TraverseState        `json:"traverse,omitempty"`
 	GridGround      *GridGroundConversion `json:"grid_ground,omitempty"`
+	HorizontalCRS   *HorizontalCRS        `json:"horizontal_crs,omitempty"`
 	History         []HistoryRecord       `json:"history"`
 }
 
@@ -400,8 +419,11 @@ func (p *Project) MarkContoursStale(reason string) {
 }
 
 func (p *Project) CoordinateLabel() string {
-	if p.GridGround == nil {
-		return ""
+	if p.GridGround != nil {
+		return p.GridGround.GridSystem
 	}
-	return p.GridGround.GridSystem
+	if p.HorizontalCRS != nil {
+		return p.HorizontalCRS.Label()
+	}
+	return ""
 }

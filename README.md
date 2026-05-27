@@ -25,6 +25,7 @@ see [TUTORIAL.md](/Users/sumedho/Documents/repos/lsurvey/TUTORIAL.md).
 - Polygon area/boundary schedules and DXF area labels.
 - Reusable point-code style libraries for default point layer/color assignment.
 - Full-screen code styling editor with a nominal AutoCAD ACI color palette.
+- Full-screen MGA94/MGA2020 and GDA94/GDA2020 geographic conversion workspace.
 - Point and line list panels with filtering and sorting.
 - Command completion hints and command history.
 - Full-screen help with styled sections.
@@ -123,6 +124,7 @@ The command line is the main way to work with the project. Type `help` or press
 - `F1`: open searchable command help.
 - `F2`: toggle the ASCII map view.
 - `F3`: open the code styling editor.
+- `F4`: open the coordinate conversion workspace.
 - `/`: start a point filter command.
 - `Tab`: advance the current completion one input at a time. For point IDs
   being created, completion suggests the next unused integer point ID.
@@ -130,7 +132,7 @@ The command line is the main way to work with the project. Type `help` or press
 - `Up` / `Down`: browse previous commands when the command input is empty.
 - `Alt+s`: cycle point sort field.
 - `Alt+d`: toggle ascending/descending point sort direction.
-- `Esc`: return from help detail, clear a help filter, close help, the map view, or the code styling editor.
+- `Esc`: return from help detail, clear a help filter, close help, the map view, code styling editor, or coordinate conversion workspace.
 - `Ctrl+C`: quit.
 
 Map keys:
@@ -429,6 +431,7 @@ map fit
 map zoom in
 map zoom out
 style
+convert
 help
 help <command>
 ```
@@ -445,6 +448,7 @@ map lines
 map contours
 map fit
 style
+convert
 help rad
 ```
 
@@ -460,6 +464,42 @@ are available regardless of which styling pane is active.
 The style-group and point-code panes display column headers and their visible
 row range; select a pane with `Tab`, then scroll it with arrow keys, page keys,
 or the mouse wheel.
+
+## Coordinate Conversion Workspace
+
+Press `F4` or run `convert` to stage point conversions before adding them to
+the project. The workspace handles MGA94, MGA2020, GDA94 latitude/longitude,
+and GDA2020 latitude/longitude. Use `s` and `t` to select source and target
+systems, `[`/`]` to set an MGA source zone, `a` or `i` to stage points, `r`
+to calculate, and `c`/`C` to commit one/all computed MGA rows. When the source
+is geographic and the target is MGA, the target MGA zone is derived from
+longitude; one batch cannot span multiple zones. The `i` and `g` actions open
+a navigable file browser filtered to conversion `.csv` or official `.gsb`
+files respectively.
+
+Geographic latitude/longitude values follow the application's angle
+convention. Enter compact DMS with hemisphere tokens, such as `31.5700 S` and
+`115.513620 E`, or use a negative compact DMS latitude such as `-31.5700`.
+Decimal degrees require the `d` suffix, for example `-31.95d` and `115.86d`.
+Geographic results are displayed as DMS with `S`/`E` hemisphere suffixes and
+five decimal places for seconds, for example `31°57′12.39650″ S`.
+For example, `115.5110` is `115°51′10″ E`; `115°51′01″ E` is entered as
+`115.5101`.
+
+Same-datum geographic/grid conversion uses Krueger n-series Transverse
+Mercator equations. Cross-datum GDA94/GDA2020 conversion requires an official
+ICSM NTv2 `.gsb` grid selected with `g`, and `m` switches between `conformal`
+and `conformal_and_distortion`. The grid files are downloaded separately from:
+
+```text
+https://github.com/icsm-au/transformation_grids
+```
+
+Committed conversion output must be MGA coordinates in one project datum and
+zone. The first conversion commit assigns that project CRS; adding conversions
+to an older project with unlabelled existing points requires confirmation.
+Cross-datum conversion is horizontal only: any elevation is retained unchanged
+and is not an ellipsoidal-height or AHD transformation.
 
 ## Import And Export Commands
 
@@ -602,6 +642,7 @@ Project files are JSON documents with a `.srv` extension. They store:
 - Lines.
 - Contour sets.
 - Traverse state.
+- Horizontal MGA datum/zone metadata once conversion output has been committed.
 - Grid-to-ground conversion metadata, when used.
 - Append-only audit history records for successful project-changing commands,
   including undo and redo actions.

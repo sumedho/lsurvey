@@ -25,6 +25,7 @@ const (
 	ModeHelp
 	ModeMap
 	ModeStyle
+	ModeConvert
 )
 
 const splashDuration = 1500 * time.Millisecond
@@ -64,6 +65,7 @@ type Model struct {
 	prior      Mode
 	mapState   MapState
 	style      StyleState
+	convert    ConversionState
 	focus      mainFocus
 
 	width  int
@@ -125,6 +127,7 @@ func newModel(p *project.Project, path, version string, showSplash bool) Model {
 		histIdx:    -1,
 		mapState:   newMapState(),
 		style:      newStyleState(),
+		convert:    newConversionState(),
 		message:    "F1 opens help. Tab accepts completions or switches panes when input is blank. Use / to filter, alt+s/alt+d to sort.",
 	}
 	if showSplash {
@@ -156,6 +159,11 @@ func (m Model) Init() tea.Cmd {
 }
 
 func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	if m.mode == ModeConvert && m.convert.picking {
+		if _, isResize := msg.(tea.WindowSizeMsg); !isResize {
+			return m.updateConversionPicker(msg)
+		}
+	}
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
 		m.width = msg.Width
@@ -164,6 +172,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.help.Width = max(20, msg.Width-8)
 		m.help.Height = max(5, msg.Height-5)
 		m.helpList.SetSize(max(20, msg.Width-4), max(5, msg.Height-4))
+		if m.convert.picking {
+			m.convert.picker.SetHeight(max(5, msg.Height-7))
+		}
 		m.syncMainViewports()
 		return m, nil
 	case splashDoneMsg:
@@ -289,6 +300,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if m.mode == ModeStyle {
 			return m.updateStyle(msg)
 		}
+		if m.mode == ModeConvert {
+			return m.updateConvert(msg)
+		}
 
 		switch msg.String() {
 		case "ctrl+c":
@@ -333,6 +347,11 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "f3":
 			if m.input.Value() == "" {
 				m.enterStyle()
+				return m, nil
+			}
+		case "f4":
+			if m.input.Value() == "" {
+				m.enterConvert()
 				return m, nil
 			}
 		case "/":
@@ -388,6 +407,9 @@ func (m Model) View() string {
 	}
 	if m.mode == ModeStyle {
 		return m.renderStyle(max(60, m.width), max(18, m.height))
+	}
+	if m.mode == ModeConvert {
+		return m.renderConvert(max(90, m.width), max(20, m.height))
 	}
 
 	m.syncMainViewports()
@@ -488,6 +510,12 @@ func (m *Model) ExecuteCommand(command string) tea.Cmd {
 			return nil
 		}
 		m.enterStyle()
+	case "convert":
+		if len(fields) != 1 {
+			m.setError("usage: convert")
+			return nil
+		}
+		m.enterConvert()
 	default:
 		outcome, err := m.session.Execute(command)
 		if err != nil {
@@ -498,6 +526,7 @@ func (m *Model) ExecuteCommand(command string) tea.Cmd {
 		if outcome.ProjectReplaced {
 			m.mapState = newMapState()
 			m.style = newStyleState()
+			m.convert = newConversionState()
 		}
 		m.message = outcome.Message
 	}
@@ -541,7 +570,7 @@ func (m *Model) showHelpDetail(query string, returnToBrowser bool) {
 }
 
 func (m Model) priorMode() Mode {
-	if m.prior == ModeMap || m.prior == ModeStyle {
+	if m.prior == ModeMap || m.prior == ModeStyle || m.prior == ModeConvert {
 		return m.prior
 	}
 	return ModeMain

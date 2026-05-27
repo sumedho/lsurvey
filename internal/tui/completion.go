@@ -27,6 +27,7 @@ func commandSuggestions(p *project.Project) []string {
 	add("dist add <a> <b>")
 	add("dist sub <a> <b>")
 	add("trav leg <azimuth|bearing> <distance> [vdiff <delta>] [code]")
+	add("convert")
 
 	points := p.SortedPoints()
 	codes := map[string]bool{}

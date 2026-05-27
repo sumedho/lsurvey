@@ -95,6 +95,7 @@ func All() []Command {
 		{Group: "Interface", Name: "sort", Usage: "sort <id|north|east|elev|code|desc> [asc|desc]", Description: "Sort the point list.", Examples: []string{"sort code", "sort north desc"}},
 		{Group: "Interface", Name: "map", Usage: "map [lines|contours|fit|zoom in|zoom out]", Description: "Toggle the full-screen ASCII map, where i toggles point ID/code labels.", Examples: []string{"map", "map lines", "map contours", "map fit"}},
 		{Group: "Interface", Name: "style", Usage: "style", Description: "Open the code styling editor for groups, point-code defaults, code libraries, and nominal AutoCAD ACI colors.", Examples: []string{"style"}, Notes: []string{"Group and point-code tables scroll with arrows, page keys, or the mouse wheel while active.", "The palette is a nominal ACI preview; AutoCAD display and plot configuration can alter appearance."}},
+		{Group: "Interface", Name: "convert", Usage: "convert", Description: "Open the staged MGA94/MGA2020 and GDA94/GDA2020 geographic conversion workspace.", Examples: []string{"convert"}, Notes: []string{"Latitude/longitude input uses compact DMS such as 31.5700 S and 115.513620 E; signed latitude such as -31.5700 is accepted, and decimal degrees require d, such as -31.95d.", "Geographic results display five decimal places for seconds, such as 31°57′12.39650″ S.", "Press i or g in the workspace to browse for conversion CSV or official NTv2 .gsb files.", "For geographic-to-MGA output the MGA zone is derived from longitude; convert points in different zones as separate batches.", "Cross-datum horizontal conversions require an official NTv2 conformal or conformal-and-distortion grid selected in the workspace.", "Elevations are carried unchanged; vertical datum conversion is not performed.", "F4 opens or closes this workspace."}},
 		{Group: "Interface", Name: "help", Usage: "help [command]", Description: "Open searchable command help, or a specific command detail page.", Examples: []string{"help", "help rad"}},
 		{Group: "Interface", Name: "quit", Usage: "quit", Description: "Exit the application.", Examples: []string{"quit"}},
 	}
@@ -153,7 +154,7 @@ func Render(query string) string {
 		}
 		fmt.Fprintf(&b, "  %-28s %s\n", cmd.Usage, cmd.Description)
 	}
-	b.WriteString("\nKeys: F1 opens searchable help, F2 toggles map, F3 opens code styling, / searches help or starts a point filter from the main view, Tab accepts a command completion, Ctrl+N/Ctrl+P cycle completions, Up/Down browse command history, arrow keys pan map, +/- zoom map, f fits map, l toggles map lines, c toggles map contours, i toggles map point ID/code labels, alt+s cycles sort fields, alt+d toggles direction, Esc returns/closes help, map, or code styling, Ctrl+C quits.\n")
+	b.WriteString("\nKeys: F1 opens searchable help, F2 toggles map, F3 opens code styling, F4 opens coordinate conversion, / searches help or starts a point filter from the main view, Tab accepts a command completion, Ctrl+N/Ctrl+P cycle completions, Up/Down browse command history, arrow keys pan map, +/- zoom map, f fits map, l toggles map lines, c toggles map contours, i toggles map point ID/code labels, alt+s cycles sort fields, alt+d toggles direction, Esc returns/closes help, map, code styling, or coordinate conversion, Ctrl+C quits.\n")
 	return b.String()
 }
 
@@ -190,7 +191,7 @@ func RenderStyled(query string) string {
 		b.WriteByte('\n')
 	}
 	b.WriteByte('\n')
-	b.WriteString(helpKeyStyle.Render("Keys: F1 help  / search help  Enter details  Esc back/close  F2 map  F3 code styling  arrows pan map  +/- zoom  f fit  l lines  c contours  i point labels"))
+	b.WriteString(helpKeyStyle.Render("Keys: F1 help  / search help  Enter details  Esc back/close  F2 map  F3 code styling  F4 convert  arrows pan map  +/- zoom  f fit  l lines  c contours  i point labels"))
 	return b.String()
 }
 

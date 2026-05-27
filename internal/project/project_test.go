@@ -21,6 +21,7 @@ func TestProjectJSONRoundTripPreservesPointCode(t *testing.T) {
 		AnchorNorthing: 100,
 		CSF:            0.9996,
 	}
+	p.HorizontalCRS = &HorizontalCRS{Datum: "GDA2020", Projection: "MGA", Zone: 50}
 	z := 42.5
 	p.Groups["BOUND"] = Group{ID: "BOUND", Layer: "BOUNDARIES", Color: 1}
 	p.PointCodeStyles["PEG"] = "BOUND"
@@ -68,6 +69,9 @@ func TestProjectJSONRoundTripPreservesPointCode(t *testing.T) {
 	}
 	if got.GridGround == nil || got.GridGround.Mode != "local_ground" || got.GridGround.GridSystem != "MGA2020_ZONE50" {
 		t.Fatalf("grid ground metadata=%+v", got.GridGround)
+	}
+	if got.HorizontalCRS == nil || got.HorizontalCRS.Label() != "MGA2020_ZONE50" {
+		t.Fatalf("horizontal CRS metadata=%+v", got.HorizontalCRS)
 	}
 	if got.DisplayPrecision() != 4 {
 		t.Fatalf("precision=%d want 4", got.DisplayPrecision())
@@ -133,6 +137,9 @@ func TestLoadMigratesSchemaOneProject(t *testing.T) {
 	}
 	if got.PointCodeStyles == nil {
 		t.Fatal("old project should initialize point code styles")
+	}
+	if got.HorizontalCRS != nil {
+		t.Fatalf("old project should have no horizontal CRS: %+v", got.HorizontalCRS)
 	}
 }
 

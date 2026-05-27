@@ -376,6 +376,21 @@ func TestScaleWithoutSystemLabelDoesNotExposeInternalMode(t *testing.T) {
 	}
 }
 
+func TestScaleWithoutSystemLabelHidesPersistedCRSWhileCoordinatesAreLocal(t *testing.T) {
+	p := project.New("test")
+	p.HorizontalCRS = &project.HorizontalCRS{Datum: "GDA2020", Projection: "MGA", Zone: 50}
+	m := NewModel(p, "")
+	m.ExecuteCommand("pt add 1 500000 6500000")
+	m.ExecuteCommand("scale apply 1 csf=0.9996")
+	if strings.Contains(m.statusLine(1), "MGA2020_ZONE50") {
+		t.Fatalf("status line should not label locally scaled coordinates as MGA: %q", m.statusLine(1))
+	}
+	m.ExecuteCommand("scale reverse")
+	if !strings.Contains(m.statusLine(1), "MGA2020_ZONE50") {
+		t.Fatalf("status line should restore project CRS after scale reverse: %q", m.statusLine(1))
+	}
+}
+
 func TestExecuteCommandSaveAndExport(t *testing.T) {
 	dir := t.TempDir()
 	projectPath := filepath.Join(dir, "job")

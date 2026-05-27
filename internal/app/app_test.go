@@ -238,6 +238,59 @@ func TestSessionUndoIncludesImportsAndMetadata(t *testing.T) {
 	}
 }
 
+func TestSessionCommitConvertedPointsAssignsCRSStylesAndSupportsUndo(t *testing.T) {
+	p := project.New("converted")
+	p.Groups["PEGS"] = project.Group{ID: "PEGS", Layer: "PEGS", Color: 1}
+	p.PointCodeStyles["PEG"] = "PEGS"
+	s := NewSession(p, "", "v1")
+	outcome, err := s.CommitConvertedPoints(ConversionCommit{
+		Points:       []geom.Point{{ID: "1", Easting: 500000, Northing: 6500000, Code: "PEG"}},
+		TargetCRS:    project.HorizontalCRS{Datum: "GDA2020", Projection: "MGA", Zone: 50},
+		SourceSystem: "MGA94", TargetSystem: "MGA2020", Model: "conformal",
+	})
+	if err != nil || !outcome.ProjectChanged || p.Points["1"].GroupID != "PEGS" {
+		t.Fatalf("outcome=%+v point=%+v err=%v", outcome, p.Points["1"], err)
+	}
+	if s.Project.HorizontalCRS == nil || s.Project.HorizontalCRS.Label() != "MGA2020_ZONE50" {
+		t.Fatalf("CRS=%+v", s.Project.HorizontalCRS)
+	}
+	if !strings.Contains(string(s.Project.History[0].Extra), `"elevation":"unchanged"`) {
+		t.Fatalf("history=%+v", s.Project.History[0])
+	}
+	if _, err := s.Execute("undo"); err != nil || len(s.Project.Points) != 0 || s.Project.HorizontalCRS != nil {
+		t.Fatalf("undo project=%+v err=%v", s.Project, err)
+	}
+}
+
+func TestSessionCommitConvertedPointsRequiresCompatibleProjectCoordinates(t *testing.T) {
+	p := project.New("converted")
+	p.Points["existing"] = geom.Point{ID: "existing"}
+	s := NewSession(p, "", "v1")
+	request := ConversionCommit{
+		Points:       []geom.Point{{ID: "new", Easting: 500000, Northing: 6500000}},
+		TargetCRS:    project.HorizontalCRS{Datum: "GDA2020", Projection: "MGA", Zone: 50},
+		SourceSystem: "MGA94", TargetSystem: "MGA2020", Model: "conformal",
+	}
+	if _, err := s.CommitConvertedPoints(request); err == nil || !strings.Contains(err.Error(), "confirm") {
+		t.Fatalf("expected CRS confirmation error, got %v", err)
+	}
+	request.AssumeExisting = true
+	if _, err := s.CommitConvertedPoints(request); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.CommitConvertedPoints(ConversionCommit{
+		Points: []geom.Point{{ID: "other"}}, TargetCRS: project.HorizontalCRS{Datum: "GDA94", Projection: "MGA", Zone: 50},
+	}); err == nil {
+		t.Fatal("expected mismatched CRS rejection")
+	}
+	s.Project.GridGround = &project.GridGroundConversion{Mode: "local_ground"}
+	if _, err := s.CommitConvertedPoints(ConversionCommit{
+		Points: []geom.Point{{ID: "scaled"}}, TargetCRS: *s.Project.HorizontalCRS,
+	}); err == nil {
+		t.Fatal("expected active scale rejection")
+	}
+}
+
 func TestSessionUndoRestoresTraverseScaleAndContourState(t *testing.T) {
 	t.Run("traverse", func(t *testing.T) {
 		p := project.New("traverse")

@@ -99,6 +99,22 @@ id,easting,northing,elevation,code,description
 - While a scale is active, whole-project `shift` and `rotate` operations must
   transform its persisted anchor so `scale reverse` remains consistent.
 - `map` should not conflict with `midpoint`; the map shortcut key is `F2`.
+- Conversion commits assign one project horizontal CRS (`MGA94` or `MGA2020`
+  plus zone), reject conflicting target CRSs and active grid-to-ground scale,
+  and must be atomic, undoable, and audited.
+- GDA94/GDA2020 conversions are horizontal-only until vertical datum metadata
+  and geoid/ellipsoid transformation behavior is explicitly implemented;
+  imported elevations are preserved unchanged.
+- Geographic/MGA conversion uses Krueger n-series equations; cross-datum
+  transformation uses a user-supplied official ICSM NTv2 conformal or
+  conformal-and-distortion grid.
+- Geographic conversion input follows angle-entry rules: compact DMS supports
+  hemisphere suffixes such as `31.5700 S` and `115.513620 E` or signed south
+  latitude such as `-31.5700`; explicit decimal degrees require a `d` suffix.
+- Geographic-to-MGA conversion derives its MGA zone from longitude and rejects
+  staged batches spanning more than one zone.
+- Geographic conversion displays latitude/longitude DMS seconds with five
+  decimal places; general COGO angle displays retain their existing precision.
 
 ## Contour Rules
 
@@ -163,6 +179,10 @@ id,easting,northing,elevation,code,description
 - `F2` toggles the ASCII map.
 - `F3` opens the code styling editor for style groups, point-code defaults, and
   reusable code libraries; it shows nominal AutoCAD ACI color previews.
+- `F4` opens the staged MGA/GDA coordinate conversion workspace; only committed
+  MGA results may enter main project point storage.
+- The coordinate conversion workspace uses the Bubble Tea file picker to select
+  staged `.csv` import files and official `.gsb` transformation grids.
 - In the code styling editor, `g` creates a style group and `c` creates a
   point-code default without requiring pane focus.
 - Style-group and point-code panes show table headers and scroll using arrows,

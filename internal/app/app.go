@@ -14,6 +14,7 @@ import (
 	"lsurvey/internal/csvpoints"
 	"lsurvey/internal/dxf"
 	"lsurvey/internal/geojson"
+	"lsurvey/internal/geom"
 	"lsurvey/internal/landxml"
 	"lsurvey/internal/paths"
 	"lsurvey/internal/project"
@@ -44,6 +45,15 @@ type Outcome struct {
 	ProjectChanged  bool
 	ProjectReplaced bool
 	CoordinateLabel string
+}
+
+type ConversionCommit struct {
+	Points         []geom.Point
+	TargetCRS      project.HorizontalCRS
+	SourceSystem   string
+	TargetSystem   string
+	Model          string
+	AssumeExisting bool
 }
 
 func Fields(command string) ([]string, error) {
@@ -244,7 +254,11 @@ func (s *Session) Execute(command string) (Outcome, error) {
 }
 
 func (s *Session) commitMutation(before *project.Project, command, message string, created, updated []string) error {
-	s.Project.AddHistoryChange(command, message, created, updated, nil, nil)
+	return s.commitMutationExtra(before, command, message, created, updated, nil)
+}
+
+func (s *Session) commitMutationExtra(before *project.Project, command, message string, created, updated []string, extra any) error {
+	s.Project.AddHistoryChange(command, message, created, updated, extra, nil)
 	after, err := cloneProject(s.Project)
 	if err != nil {
 		return err
@@ -253,6 +267,63 @@ func (s *Session) commitMutation(before *project.Project, command, message strin
 	s.redo = nil
 	s.Dirty = true
 	return nil
+}
+
+func (s *Session) CommitConvertedPoints(request ConversionCommit) (Outcome, error) {
+	if len(request.Points) == 0 {
+		return Outcome{}, fmt.Errorf("no converted points selected")
+	}
+	if request.TargetCRS.Projection != "MGA" || (request.TargetCRS.Datum != "GDA94" && request.TargetCRS.Datum != "GDA2020") || request.TargetCRS.Zone < 46 || request.TargetCRS.Zone > 59 {
+		return Outcome{}, fmt.Errorf("conversion target must be MGA94 or MGA2020 in zone 46 to 59")
+	}
+	if s.Project.GridGround != nil {
+		return Outcome{}, fmt.Errorf("cannot commit converted coordinates while a grid-to-ground scale is active")
+	}
+	if s.Project.HorizontalCRS != nil && !s.Project.HorizontalCRS.Equal(request.TargetCRS) {
+		return Outcome{}, fmt.Errorf("project coordinates are %s; converted points are %s", s.Project.HorizontalCRS.Label(), request.TargetCRS.Label())
+	}
+	if s.Project.HorizontalCRS == nil && len(s.Project.Points) > 0 && !request.AssumeExisting {
+		return Outcome{}, fmt.Errorf("existing project points have no CRS; confirm they are %s before committing", request.TargetCRS.Label())
+	}
+	seen := make(map[string]bool, len(request.Points))
+	for _, point := range request.Points {
+		if point.ID == "" {
+			return Outcome{}, fmt.Errorf("converted point ID is required")
+		}
+		if seen[point.ID] {
+			return Outcome{}, fmt.Errorf("converted point %q is duplicated", point.ID)
+		}
+		seen[point.ID] = true
+		if _, exists := s.Project.Points[point.ID]; exists {
+			return Outcome{}, fmt.Errorf("point %q already exists", point.ID)
+		}
+	}
+	before, err := cloneProject(s.Project)
+	if err != nil {
+		return Outcome{}, err
+	}
+	target := request.TargetCRS
+	s.Project.HorizontalCRS = &target
+	created := make([]string, 0, len(request.Points))
+	for _, point := range request.Points {
+		s.Project.Points[point.ID] = s.Project.ApplyPointCodeStyle(point)
+		created = append(created, "point:"+point.ID)
+	}
+	s.Project.MarkContoursStale("converted point geometry changed")
+	model := request.Model
+	if model == "" {
+		model = "projection_only"
+	}
+	command := fmt.Sprintf("convert commit source=%s target=%s model=%s count=%d", request.SourceSystem, request.TargetSystem, model, len(request.Points))
+	message := fmt.Sprintf("committed %d converted points to %s; elevations unchanged", len(request.Points), request.TargetCRS.Label())
+	extra := map[string]any{
+		"source_system": request.SourceSystem, "target_system": request.TargetSystem,
+		"model": model, "count": len(request.Points), "elevation": "unchanged",
+	}
+	if err := s.commitMutationExtra(before, command, message, created, nil, extra); err != nil {
+		return Outcome{}, err
+	}
+	return Outcome{Message: message, ProjectChanged: true, CoordinateLabel: s.Project.CoordinateLabel()}, nil
 }
 
 func (s *Session) undoEdit() (Outcome, error) {
