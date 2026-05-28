@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -8,6 +9,7 @@ import (
 
 	"github.com/charmbracelet/bubbles/list"
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/lipgloss"
 
 	"lsurvey/internal/cogo"
 	"lsurvey/internal/geom"
@@ -64,10 +66,16 @@ func TestNewModelStartsInSplashModeWithVersion(t *testing.T) {
 	m.width = 80
 	m.height = 24
 	view := m.View()
-	for _, want := range []string{"LSurvey", "Version 1.2.3", "Press any key to continue"} {
+	for _, want := range []string{"| |    ___", "| |___\\__ \\", "Version 1.2.3", "Press any key to continue"} {
 		if !strings.Contains(view, want) {
 			t.Fatalf("splash missing %q:\n%s", want, view)
 		}
+	}
+}
+
+func TestSplashTitleFallsBackWhenNarrow(t *testing.T) {
+	if got := splashTitle(10); got != "Lsurvey" {
+		t.Fatalf("title=%q want compact fallback", got)
 	}
 }
 
@@ -147,8 +155,38 @@ func TestMouseWheelScrollsHelpViewport(t *testing.T) {
 	if m.help.YOffset == 0 {
 		t.Fatal("expected help viewport wheel scroll")
 	}
-	if !strings.Contains(m.View(), "mouse wheel scroll") {
-		t.Fatalf("help instructions should mention mouse scrolling:\n%s", m.View())
+	view := m.View()
+	for _, want := range []string{"mouse wheel scroll", "%"} {
+		if !strings.Contains(view, want) {
+			t.Fatalf("help view missing %q:\n%s", want, view)
+		}
+	}
+}
+
+func TestMouseWheelScrollsHelpBrowserAndShowsPercent(t *testing.T) {
+	m := NewModel(project.New("test"), "")
+	updated, _ := m.Update(tea.WindowSizeMsg{Width: 80, Height: 18})
+	m = updated.(Model)
+	m.ExecuteCommand("help")
+	if m.mode != ModeHelp || m.helpPage != helpPageBrowser {
+		t.Fatalf("mode=%v page=%v want help browser", m.mode, m.helpPage)
+	}
+
+	updated, _ = m.Update(tea.MouseMsg{
+		X:      10,
+		Y:      8,
+		Button: tea.MouseButtonWheelDown,
+		Action: tea.MouseActionPress,
+	})
+	m = updated.(Model)
+	if m.helpList.GlobalIndex() == 0 {
+		t.Fatal("expected help browser wheel scroll")
+	}
+	view := m.View()
+	for _, want := range []string{"mouse wheel scroll", "%"} {
+		if !strings.Contains(view, want) {
+			t.Fatalf("help browser missing %q:\n%s", want, view)
+		}
 	}
 }
 
@@ -250,6 +288,61 @@ func TestHelpBrowserFiltersOnlyCommandNames(t *testing.T) {
 			t.Fatalf("filter value for %q=%q want command name only", command.Name, got)
 		}
 	}
+}
+
+func TestScreenTabsRenderAndSwitchByMouse(t *testing.T) {
+	m := NewModel(project.New("test"), "")
+	m.width = 90
+	m.height = 24
+	view := m.View()
+	for _, want := range []string{"Project", "Help F1", "Map F2", "Styles F3", "Convert F4"} {
+		if !strings.Contains(view, want) {
+			t.Fatalf("tab bar missing %q:\n%s", want, view)
+		}
+	}
+
+	for _, tc := range []struct {
+		label string
+		mode  Mode
+	}{
+		{label: "Help F1", mode: ModeHelp},
+		{label: "Map F2", mode: ModeMap},
+		{label: "Styles F3", mode: ModeStyle},
+		{label: "Convert F4", mode: ModeConvert},
+		{label: "Project", mode: ModeMain},
+	} {
+		updated, _ := m.Update(tea.MouseMsg{
+			X:      tabClickX(tc.label),
+			Y:      0,
+			Button: tea.MouseButtonLeft,
+			Action: tea.MouseActionPress,
+		})
+		m = updated.(Model)
+		if m.mode != tc.mode {
+			t.Fatalf("click %q mode=%v want %v", tc.label, m.mode, tc.mode)
+		}
+	}
+}
+
+func TestKeyboardTabStillCyclesMainFocus(t *testing.T) {
+	m := NewModel(project.New("test"), "")
+	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyTab})
+	m = updated.(Model)
+	if m.mode != ModeMain || m.focus != focusPoints {
+		t.Fatalf("mode=%v focus=%v want main points focus", m.mode, m.focus)
+	}
+}
+
+func tabClickX(label string) int {
+	left := 0
+	for _, tab := range screenTabs {
+		width := lipgloss.Width(" " + tab.Label + " ")
+		if tab.Label == label {
+			return left + width/2
+		}
+		left += width
+	}
+	return -1
 }
 
 func filterMatchesFromCommand(t *testing.T, cmd tea.Cmd) list.FilterMatchesMsg {
@@ -471,6 +564,136 @@ func TestExecuteCommandImportExportGeoJSON(t *testing.T) {
 	}
 }
 
+func TestF5FileBrowserImportsCSVSelection(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "points.csv")
+	if err := os.WriteFile(path, []byte("id,easting,northing,elevation,code,description\n1,100,200,,PEG,corner\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	m := NewModel(project.New("test"), "")
+	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyF5})
+	m = updated.(Model)
+	if !m.importPicking {
+		t.Fatal("expected import picker")
+	}
+	m.importPicker.CurrentDirectory = dir
+	updated, _ = m.Update(m.importPicker.Init()())
+	m = updated.(Model)
+	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	m = updated.(Model)
+	if m.importPicking || m.lastErr != "" || m.project.Points["1"].Code != "PEG" || !m.dirty {
+		t.Fatalf("picker=%v error=%q dirty=%v points=%+v", m.importPicking, m.lastErr, m.dirty, m.project.Points)
+	}
+}
+
+func TestF5FileBrowserImportsGeoJSONSelection(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "survey.geojson")
+	source := NewModel(project.New("source"), "")
+	source.ExecuteCommand("pt add 1 100 200 PEG")
+	source.ExecuteCommand("pt add 2 110 210")
+	source.ExecuteCommand("line add L1 1 2 BOUNDARY")
+	source.ExecuteCommand("export geojson " + path)
+	if source.lastErr != "" {
+		t.Fatalf("export geojson error: %s", source.lastErr)
+	}
+
+	m := NewModel(project.New("test"), "")
+	m.startImportPicker()
+	m.importPicker.CurrentDirectory = dir
+	updated, _ := m.Update(m.importPicker.Init()())
+	m = updated.(Model)
+	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	m = updated.(Model)
+	if m.importPicking || m.lastErr != "" || len(m.project.Points) != 2 || len(m.project.Features) != 1 || !m.dirty {
+		t.Fatalf("picker=%v error=%q dirty=%v points=%d features=%d", m.importPicking, m.lastErr, m.dirty, len(m.project.Points), len(m.project.Features))
+	}
+}
+
+func TestF5FileBrowserOpensSRVSelection(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "opened.srv")
+	p := project.New("opened")
+	p.Points["1"] = geom.Point{ID: "1", Easting: 1, Northing: 2}
+	if err := project.Save(path, p); err != nil {
+		t.Fatal(err)
+	}
+
+	m := NewModel(project.New("current"), "")
+	m.ExecuteCommand("map lines")
+	m.startImportPicker()
+	m.importPicker.CurrentDirectory = dir
+	updated, _ := m.Update(m.importPicker.Init()())
+	m = updated.(Model)
+	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	m = updated.(Model)
+	if m.importPicking || m.lastErr != "" || m.path != path || m.project.Name != "opened" {
+		t.Fatalf("picker=%v error=%q path=%q project=%q", m.importPicking, m.lastErr, m.path, m.project.Name)
+	}
+	if m.mapState.ShowLines {
+		t.Fatalf("open should reset map state: %+v", m.mapState)
+	}
+}
+
+func TestF5FileBrowserConfirmsDirtySRVOpen(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "replacement.srv")
+	p := project.New("replacement")
+	p.Points["2"] = geom.Point{ID: "2", Easting: 5, Northing: 6}
+	if err := project.Save(path, p); err != nil {
+		t.Fatal(err)
+	}
+
+	m := NewModel(project.New("current"), "")
+	m.ExecuteCommand("pt add 1 1 1")
+	m.startImportPicker()
+	m.importPicker.CurrentDirectory = dir
+	updated, _ := m.Update(m.importPicker.Init()())
+	m = updated.(Model)
+	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	m = updated.(Model)
+	if !m.importPicking || m.importConfirmPath != path || m.project.Name != "current" {
+		t.Fatalf("picker=%v confirm=%q project=%q", m.importPicking, m.importConfirmPath, m.project.Name)
+	}
+	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyEsc})
+	m = updated.(Model)
+	if !m.importPicking || m.importConfirmPath != "" || m.project.Name != "current" {
+		t.Fatalf("cancel picker=%v confirm=%q project=%q", m.importPicking, m.importConfirmPath, m.project.Name)
+	}
+	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	m = updated.(Model)
+	if m.importConfirmPath == "" {
+		t.Fatal("expected confirmation to restart")
+	}
+	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	m = updated.(Model)
+	if m.importPicking || m.lastErr != "" || m.project.Name != "replacement" || m.path != path {
+		t.Fatalf("picker=%v error=%q path=%q project=%q", m.importPicking, m.lastErr, m.path, m.project.Name)
+	}
+}
+
+func TestF5FileBrowserCancelAndUnsupportedSelection(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "notes.txt"), []byte("not supported"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	m := NewModel(project.New("test"), "")
+	m.startImportPicker()
+	m.importPicker.CurrentDirectory = dir
+	updated, _ := m.Update(m.importPicker.Init()())
+	m = updated.(Model)
+	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	m = updated.(Model)
+	if !m.importPicking || !strings.Contains(m.lastErr, "unsupported file type") {
+		t.Fatalf("picker=%v error=%q", m.importPicking, m.lastErr)
+	}
+	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyEsc})
+	m = updated.(Model)
+	if m.importPicking || m.mode != ModeMain {
+		t.Fatalf("picker=%v mode=%v", m.importPicking, m.mode)
+	}
+}
+
 func TestSaveWithoutArgumentNormalizesExistingPath(t *testing.T) {
 	m := NewModel(project.New("test"), "job")
 	m.ExecuteCommand("save")
@@ -647,7 +870,7 @@ func TestMapLineZoomFitAndEscKeys(t *testing.T) {
 	}
 }
 
-func TestMapEntryResetsLabelsButMapHelpReturnDoesNot(t *testing.T) {
+func TestMapEntryResetsLabelsAndHelpTabGoesToProject(t *testing.T) {
 	m := NewModel(project.New("test"), "")
 	m.ExecuteCommand("map")
 	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'i'}})
@@ -663,12 +886,10 @@ func TestMapEntryResetsLabelsButMapHelpReturnDoesNot(t *testing.T) {
 	}
 	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyEsc})
 	m = updated.(Model)
-	if m.mode != ModeMap || !m.mapState.ShowCodes {
-		t.Fatalf("help return should retain map labels: mode=%v state=%+v", m.mode, m.mapState)
+	if m.mode != ModeMain || !m.mapState.ShowCodes {
+		t.Fatalf("help escape should select project and retain map state: mode=%v state=%+v", m.mode, m.mapState)
 	}
 
-	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyEsc})
-	m = updated.(Model)
 	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyF2})
 	m = updated.(Model)
 	if m.mapState.ShowCodes {

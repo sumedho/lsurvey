@@ -61,7 +61,7 @@ func TestFormatPointRowsUsesThreeDecimalPlaces(t *testing.T) {
 	z := 3.4567
 	p := project.New("test")
 	p.Points["1"] = geom.Point{ID: "1", Northing: 1.23456, Easting: 2.34567, Elevation: &z}
-	got := FormatPointRows(p.SortedPoints(), 3)
+	got := FormatPointRows(p.SortedPoints(), p.Groups, 3)
 	for _, want := range []string{"1.235", "2.346", "3.457"} {
 		if !strings.Contains(got, want) {
 			t.Fatalf("point rows missing %q:\n%s", want, got)
@@ -75,12 +75,26 @@ func TestFormatPointRowsUsesThreeDecimalPlaces(t *testing.T) {
 func TestFormatPointRowsUsesConfiguredPrecision(t *testing.T) {
 	p := project.New("test")
 	p.Points["1"] = geom.Point{ID: "1", Northing: 1.23456, Easting: 2.34567}
-	got := FormatPointRows(p.SortedPoints(), 1)
+	got := FormatPointRows(p.SortedPoints(), p.Groups, 1)
 	if !strings.Contains(got, "1.2") || !strings.Contains(got, "2.3") {
 		t.Fatalf("point rows missing one decimal values:\n%s", got)
 	}
 	if strings.Contains(got, "1.235") {
 		t.Fatalf("point rows should use configured precision:\n%s", got)
+	}
+}
+
+func TestFormatPointRowsIncludesGroupAndLayer(t *testing.T) {
+	p := project.New("test")
+	p.Groups["BOUND"] = project.Group{ID: "BOUND", Layer: "BOUNDARIES", Color: 1}
+	p.Points["1"] = geom.Point{ID: "1", Northing: 1, Easting: 2, Code: "PEG", GroupID: "BOUND", Description: "corner"}
+	p.Points["2"] = geom.Point{ID: "2", Northing: 3, Easting: 4, GroupID: "MISSING"}
+
+	got := FormatPointRows(p.SortedPoints(), p.Groups, 2)
+	for _, want := range []string{"Group", "Layer", "BOUND", "BOUNDARIES", "MISSING"} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("point rows missing %q:\n%s", want, got)
+		}
 	}
 }
 
@@ -91,8 +105,23 @@ func TestFormatLineRowsIncludesContoursWithoutHeightClipping(t *testing.T) {
 	contours := []project.ContourSet{
 		{ID: "C1", Interval: 0.5, Polylines: []project.ContourPolyline{{ID: "PL1"}}},
 	}
-	got := FormatLineRows(lines, contours, 2)
+	got := FormatLineRows(lines, contours, nil, 2)
 	for _, want := range []string{"L1", "Contours:", "C1", "0.50"} {
+		if !strings.Contains(got, want) {
+			t.Fatalf("line rows missing %q:\n%s", want, got)
+		}
+	}
+}
+
+func TestFormatLineRowsIncludesGroupAndLayerForFeatureKinds(t *testing.T) {
+	p := project.New("test")
+	p.Groups["ROAD"] = project.Group{ID: "ROAD", Layer: "ROAD_LAYER", Color: 2}
+	p.Features["L1"] = project.Feature{ID: "L1", Kind: project.FeatureLine, PointIDs: []string{"1", "2"}, Code: "EDGE", GroupID: "ROAD"}
+	p.Features["PL1"] = project.Feature{ID: "PL1", Kind: project.FeaturePolyline, PointIDs: []string{"1", "2", "3"}, GroupID: "ROAD"}
+	p.Features["PG1"] = project.Feature{ID: "PG1", Kind: project.FeaturePolygon, PointIDs: []string{"1", "2", "3"}, GroupID: "MISSING"}
+
+	got := FormatLineRows(p.SortedFeatures(), nil, p.Groups, 2)
+	for _, want := range []string{"Group", "Layer", "L1", "PL1", "PG1", "line", "polyline", "polygon", "ROAD", "ROAD_LAYER", "MISSING"} {
 		if !strings.Contains(got, want) {
 			t.Fatalf("line rows missing %q:\n%s", want, got)
 		}
@@ -104,7 +133,7 @@ func TestFormatLineRowsUsesNaturallySortedProjectLines(t *testing.T) {
 	for _, id := range []string{"L10", "L2", "L1"} {
 		p.Features[id] = project.Feature{ID: id, Kind: project.FeatureLine}
 	}
-	got := FormatLineRows(p.SortedFeatures(), nil, 2)
+	got := FormatLineRows(p.SortedFeatures(), nil, p.Groups, 2)
 	l1, l2, l10 := strings.Index(got, "L1        "), strings.Index(got, "L2        "), strings.Index(got, "L10       ")
 	if l1 < 0 || l2 < 0 || l10 < 0 || !(l1 < l2 && l2 < l10) {
 		t.Fatalf("line rows not naturally sorted:\n%s", got)

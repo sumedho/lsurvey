@@ -154,7 +154,7 @@ func Render(query string) string {
 		}
 		fmt.Fprintf(&b, "  %-28s %s\n", cmd.Usage, cmd.Description)
 	}
-	b.WriteString("\nKeys: F1 opens searchable help, F2 toggles map, F3 opens code styling, F4 opens coordinate conversion, / searches help or starts a point filter from the main view, Tab accepts a command completion, Ctrl+N/Ctrl+P cycle completions, Up/Down browse command history, arrow keys pan map, +/- zoom map, f fits map, l toggles map lines, c toggles map contours, i toggles map point ID/code labels, alt+s cycles sort fields, alt+d toggles direction, Esc returns/closes help, map, code styling, or coordinate conversion, Ctrl+C quits.\n")
+	b.WriteString("\nKeys: F1 opens searchable help, F2 toggles map, F3 opens code styling, F4 opens coordinate conversion, F5 browses for .srv, .csv, or .geojson files, / searches help or starts a point filter from the main view, Tab accepts a command completion, Ctrl+N/Ctrl+P cycle completions, Up/Down browse command history, arrow keys pan map, +/- zoom map, f fits map, l toggles map lines, c toggles map contours, i toggles map point ID/code labels, alt+s cycles sort fields, alt+d toggles direction, Esc returns/closes help, map, code styling, coordinate conversion, or file browsing, Ctrl+C quits.\n")
 	return b.String()
 }
 

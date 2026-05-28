@@ -5,6 +5,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/charmbracelet/bubbles/filepicker"
 	"github.com/charmbracelet/bubbles/key"
 	"github.com/charmbracelet/bubbles/list"
 	"github.com/charmbracelet/bubbles/textinput"
@@ -68,6 +69,11 @@ type Model struct {
 	convert    ConversionState
 	focus      mainFocus
 
+	importPicker      filepicker.Model
+	importPicking     bool
+	importReturn      Mode
+	importConfirmPath string
+
 	width  int
 	height int
 
@@ -128,7 +134,7 @@ func newModel(p *project.Project, path, version string, showSplash bool) Model {
 		mapState:   newMapState(),
 		style:      newStyleState(),
 		convert:    newConversionState(),
-		message:    "F1 opens help. Tab accepts completions or switches panes when input is blank. Use / to filter, alt+s/alt+d to sort.",
+		message:    "F1 opens help. F5 browses for .srv/.csv/.geojson files. Tab accepts completions or switches panes when input is blank.",
 	}
 	if showSplash {
 		m.mode = ModeSplash
@@ -159,6 +165,11 @@ func (m Model) Init() tea.Cmd {
 }
 
 func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	if m.importPicking {
+		if _, isResize := msg.(tea.WindowSizeMsg); !isResize {
+			return m.updateImportPicker(msg)
+		}
+	}
 	if m.mode == ModeConvert && m.convert.picking {
 		if _, isResize := msg.(tea.WindowSizeMsg); !isResize {
 			return m.updateConversionPicker(msg)
@@ -172,6 +183,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.help.Width = max(20, msg.Width-8)
 		m.help.Height = max(5, msg.Height-5)
 		m.helpList.SetSize(max(20, msg.Width-4), max(5, msg.Height-4))
+		if m.importPicking {
+			m.importPicker.SetHeight(max(5, msg.Height-7))
+		}
 		if m.convert.picking {
 			m.convert.picker.SetHeight(max(5, msg.Height-7))
 		}
@@ -189,10 +203,22 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, cmd
 		}
 	case tea.MouseMsg:
-		if m.mode == ModeHelp && m.helpPage == helpPageDetail && isWheelMouse(msg) {
-			var cmd tea.Cmd
-			m.help, cmd = m.help.Update(msg)
-			return m, cmd
+		if m.mode == ModeSplash {
+			return m, nil
+		}
+		if m.handleTabMouse(msg) {
+			return m, nil
+		}
+		if m.mode == ModeHelp && isWheelMouse(msg) {
+			if m.helpPage == helpPageBrowser {
+				m.updateHelpBrowserMouse(msg)
+				return m, nil
+			}
+			if m.helpPage == helpPageDetail {
+				var cmd tea.Cmd
+				m.help, cmd = m.help.Update(msg)
+				return m, cmd
+			}
 		}
 		if m.mode == ModeMain {
 			if handled, cmd := m.handleMainMouse(msg); handled {
@@ -211,13 +237,15 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.mode = ModeMain
 			return m, nil
 		}
+		if msg.String() == "f5" && m.canStartImportPicker() {
+			return m, m.startImportPicker()
+		}
 		if m.mode == ModeHelp {
 			if msg.String() == "ctrl+c" {
 				m.quitting = true
 				return m, tea.Quit
 			}
 			if msg.String() == "f1" {
-				m.mode = m.priorMode()
 				return m, nil
 			}
 			if m.helpPage == helpPageBrowser {
@@ -228,7 +256,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					return m, nil
 				}
 				if msg.String() == "esc" && !m.helpList.SettingFilter() && !m.helpList.IsFiltered() {
-					m.mode = m.priorMode()
+					m.mode = ModeMain
 					return m, nil
 				}
 				var cmd tea.Cmd
@@ -241,7 +269,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					m.helpPage = helpPageBrowser
 					m.helpReturn = false
 				} else {
-					m.mode = m.priorMode()
+					m.mode = ModeMain
 				}
 				return m, nil
 			}
@@ -388,34 +416,41 @@ func (m Model) View() string {
 	if m.mode == ModeSplash {
 		return renderSplash(max(60, m.width), max(18, m.height), m.version)
 	}
+	if m.importPicking {
+		width := max(90, m.width)
+		return m.renderWithTabs(m.renderImportPicker(width, max(18, m.height)-tabBarHeight), width)
+	}
 	if m.mode == ModeHelp {
 		width := max(60, m.width)
-		height := max(18, m.height)
+		height := max(18, m.height) - tabBarHeight
 		if m.helpPage == helpPageBrowser {
-			body := mutedStyle.Render("/: filter  Enter: details  Esc: clear filter/close  F1: close") + "\n" + m.helpList.View()
-			return box("Help", body, width, height)
+			body := mutedStyle.Render("/: filter  Enter: details  Esc: clear filter/Project  mouse wheel scroll  F1: help") + "\n" + m.helpList.View()
+			return m.renderWithTabs(box(m.helpBrowserTitle(), body, width, height), width)
 		}
-		back := "Esc closes"
+		back := "Esc returns to Project"
 		if m.helpReturn {
 			back = "Esc returns to results"
 		}
-		body := mutedStyle.Render(back+", arrows/page keys or mouse wheel scroll  F1: close") + "\n" + m.help.View()
-		return box("Help", body, width, height)
+		body := mutedStyle.Render(back+", arrows/page keys or mouse wheel scroll  F1: help") + "\n" + m.help.View()
+		return m.renderWithTabs(box(m.helpDetailTitle(), body, width, height), width)
 	}
 	if m.mode == ModeMap {
-		return renderMap(m.project, m.mapState, max(60, m.width), max(18, m.height), m.project.DisplayPrecision())
+		width := max(60, m.width)
+		return m.renderWithTabs(renderMap(m.project, m.mapState, width, max(18, m.height)-tabBarHeight, m.project.DisplayPrecision()), width)
 	}
 	if m.mode == ModeStyle {
-		return m.renderStyle(max(60, m.width), max(18, m.height))
+		width := max(60, m.width)
+		return m.renderWithTabs(m.renderStyle(width, max(18, m.height)-tabBarHeight), width)
 	}
 	if m.mode == ModeConvert {
-		return m.renderConvert(max(90, m.width), max(20, m.height))
+		width := max(90, m.width)
+		return m.renderWithTabs(m.renderConvert(width, max(20, m.height)-tabBarHeight), width)
 	}
 
 	m.syncMainViewports()
 
 	width := max(60, m.width)
-	height := max(18, m.height)
+	height := max(18, m.height) - tabBarHeight
 	infoHeight := 4
 	commandHeight := 6
 	lineHeight := max(5, height/4)
@@ -432,13 +467,14 @@ func (m Model) View() string {
 		commandLines = append(commandLines, message)
 	}
 	command := strings.Join(commandLines, "\n")
-	return lipgloss.JoinVertical(
+	body := lipgloss.JoinVertical(
 		lipgloss.Left,
 		box("Info", info, width, infoHeight),
 		box(m.viewportPaneTitle("Points", focusPoints, m.pointsView), m.pointsView.View(), width, pointHeight),
 		box(m.viewportPaneTitle("Lines", focusLines, m.linesView), m.linesView.View(), width, lineHeight),
 		box(m.mainPaneTitle("Command", focusCommand), command, width, commandHeight),
 	)
+	return m.renderWithTabs(body, width)
 }
 
 func dismissSplashAfter(delay time.Duration) tea.Cmd {
@@ -454,18 +490,32 @@ func dismissSplash() tea.Cmd {
 func renderSplash(width, height int, version string) string {
 	width = max(60, width)
 	height = max(18, height)
+	innerWidth := max(0, width-4)
+	innerHeight := max(1, height-3)
 	body := lipgloss.JoinVertical(
 		lipgloss.Center,
-		splashTitleStyle.Render("LSurvey"),
+		splashTitleStyle.Render(splashTitle(innerWidth)),
 		"",
 		titleStyle.Render("Version "+version),
 		"",
 		mutedStyle.Render("Press any key to continue"),
 	)
-	innerWidth := max(0, width-4)
-	innerHeight := max(1, height-3)
-	return box("LSurvey", lipgloss.Place(innerWidth, innerHeight, lipgloss.Center, lipgloss.Center, body), width, height)
+	return box("Lsurvey", lipgloss.Place(innerWidth, innerHeight, lipgloss.Center, lipgloss.Center, body), width, height)
 }
+
+func splashTitle(width int) string {
+	if lipgloss.Width(splashLogo) > width {
+		return "Lsurvey"
+	}
+	return splashLogo
+}
+
+const splashLogo = ` _
+| |    ___ _   _ _ ____   _____ _   _
+| |   / __| | | | '__\ \ / / _ \ | | |
+| |___\__ \ |_| | |   \ V /  __/ |_| |
+|_____|___/\__, |_|    \_/ \___|\__, |
+           |___/                 |___/`
 
 func (m *Model) ExecuteCommand(command string) tea.Cmd {
 	command = strings.TrimSpace(command)
@@ -660,7 +710,7 @@ func (m *Model) handleSort(fields []string) {
 
 func (m *Model) syncMainViewports() {
 	width := max(60, m.width)
-	height := max(18, m.height)
+	height := max(18, m.height) - tabBarHeight
 	infoHeight := 4
 	commandHeight := 6
 	lineHeight := max(5, height/4)
@@ -673,8 +723,8 @@ func (m *Model) syncMainViewports() {
 	m.pointsView.Height = pointContentHeight
 	m.linesView.Width = contentWidth
 	m.linesView.Height = lineContentHeight
-	m.pointsView.SetContent(FormatPointRows(FilterAndSortPoints(m.project, m.filter, m.sort, m.sortAsc), m.project.DisplayPrecision()))
-	m.linesView.SetContent(FormatLineRows(m.project.SortedFeatures(), m.project.SortedContourSets(), m.project.DisplayPrecision()))
+	m.pointsView.SetContent(FormatPointRows(FilterAndSortPoints(m.project, m.filter, m.sort, m.sortAsc), m.project.Groups, m.project.DisplayPrecision()))
+	m.linesView.SetContent(FormatLineRows(m.project.SortedFeatures(), m.project.SortedContourSets(), m.project.Groups, m.project.DisplayPrecision()))
 }
 
 func (m *Model) shouldCycleFocusOnTab() bool {
@@ -752,7 +802,8 @@ func (m *Model) handleMainMouse(msg tea.MouseMsg) (bool, tea.Cmd) {
 
 func (m Model) mainPaneAt(x, y int) (mainFocus, bool) {
 	width := max(60, m.width)
-	height := max(18, m.height)
+	height := max(18, m.height) - tabBarHeight
+	y -= tabBarHeight
 	infoHeight := 4
 	commandHeight := 6
 	lineHeight := max(5, height/4)
@@ -794,6 +845,39 @@ func (m Model) viewportPaneTitle(title string, focus mainFocus, view viewport.Mo
 	}
 	percent := int(view.ScrollPercent()*100 + 0.5)
 	return fmt.Sprintf("%s %d%%", title, percent)
+}
+
+func (m Model) helpDetailTitle() string {
+	if m.help.TotalLineCount() <= m.help.VisibleLineCount() {
+		return "Help"
+	}
+	percent := int(m.help.ScrollPercent()*100 + 0.5)
+	return fmt.Sprintf("Help %d%%", percent)
+}
+
+func (m Model) helpBrowserTitle() string {
+	total := len(m.helpList.VisibleItems())
+	if total <= 1 {
+		return "Help"
+	}
+	index := m.helpList.GlobalIndex()
+	percent := 0
+	if total > 1 {
+		percent = int(float64(index) / float64(total-1) * 100)
+	}
+	return fmt.Sprintf("Help %d%%", percent)
+}
+
+func (m *Model) updateHelpBrowserMouse(msg tea.MouseMsg) {
+	if m.helpList.SettingFilter() {
+		return
+	}
+	switch msg.Button {
+	case tea.MouseButtonWheelDown, tea.MouseButtonWheelRight:
+		m.helpList.CursorDown()
+	case tea.MouseButtonWheelUp, tea.MouseButtonWheelLeft:
+		m.helpList.CursorUp()
+	}
 }
 
 func isWheelMouse(msg tea.MouseMsg) bool {

@@ -10,7 +10,7 @@ import (
 	"lsurvey/internal/project"
 )
 
-func TestStyleScreenOpensFromCommandShortcutAndReturnsFromHelp(t *testing.T) {
+func TestStyleScreenOpensFromCommandShortcutAndHelpTab(t *testing.T) {
 	m := NewModel(project.New("test"), "")
 	m.ExecuteCommand("style")
 	if m.mode != ModeStyle {
@@ -23,8 +23,8 @@ func TestStyleScreenOpensFromCommandShortcutAndReturnsFromHelp(t *testing.T) {
 	}
 	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyF1})
 	m = updated.(Model)
-	if m.mode != ModeStyle {
-		t.Fatalf("mode=%v want return to style", m.mode)
+	if m.mode != ModeHelp {
+		t.Fatalf("mode=%v want help to stay selected", m.mode)
 	}
 	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyEsc})
 	m = updated.(Model)

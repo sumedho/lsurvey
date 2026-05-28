@@ -75,17 +75,17 @@ func elevationValue(p geom.Point) float64 {
 	return *p.Elevation
 }
 
-func FormatPointRows(points []geom.Point, precision int) string {
+func FormatPointRows(points []geom.Point, groups map[string]project.Group, precision int) string {
 	var b strings.Builder
-	b.WriteString(fmt.Sprintf("%-10s %14s %14s %12s %-10s %s\n", "ID", "Easting", "Northing", "Elevation", "Code", "Description"))
-	b.WriteString(strings.Repeat("-", 78))
+	b.WriteString(fmt.Sprintf("%-10s %14s %14s %12s %-10s %-10s %-14s %s\n", "ID", "Easting", "Northing", "Elevation", "Code", "Group", "Layer", "Description"))
+	b.WriteString(strings.Repeat("-", 106))
 	b.WriteByte('\n')
 	for _, pt := range points {
 		elev := ""
 		if pt.Elevation != nil {
 			elev = formatDecimal(*pt.Elevation, precision)
 		}
-		fmt.Fprintf(&b, "%-10s %14s %14s %12s %-10s %s\n", pt.ID, formatDecimal(pt.Easting, precision), formatDecimal(pt.Northing, precision), elev, pt.Code, pt.Description)
+		fmt.Fprintf(&b, "%-10s %14s %14s %12s %-10s %-10s %-14s %s\n", pt.ID, formatDecimal(pt.Easting, precision), formatDecimal(pt.Northing, precision), elev, pt.Code, pt.GroupID, groupLayer(groups, pt.GroupID), pt.Description)
 	}
 	return b.String()
 }
@@ -94,13 +94,13 @@ func formatDecimal(value float64, precision int) string {
 	return strconv.FormatFloat(value, 'f', precision, 64)
 }
 
-func FormatLineRows(features []project.Feature, contours []project.ContourSet, precision int) string {
+func FormatLineRows(features []project.Feature, contours []project.ContourSet, groups map[string]project.Group, precision int) string {
 	var b strings.Builder
-	b.WriteString(fmt.Sprintf("%-10s %-10s %-24s %-12s %s\n", "ID", "Type", "Points", "Code", "Description"))
-	b.WriteString(strings.Repeat("-", 72))
+	b.WriteString(fmt.Sprintf("%-10s %-10s %-24s %-12s %-10s %-14s %s\n", "ID", "Type", "Points", "Code", "Group", "Layer", "Description"))
+	b.WriteString(strings.Repeat("-", 100))
 	b.WriteByte('\n')
 	for _, feature := range features {
-		fmt.Fprintf(&b, "%-10s %-10s %-24s %-12s %s\n", feature.ID, feature.Kind, strings.Join(feature.PointIDs, ","), feature.Code, feature.Description)
+		fmt.Fprintf(&b, "%-10s %-10s %-24s %-12s %-10s %-14s %s\n", feature.ID, feature.Kind, strings.Join(feature.PointIDs, ","), feature.Code, feature.GroupID, groupLayer(groups, feature.GroupID), feature.Description)
 	}
 	if len(contours) > 0 {
 		b.WriteString("Contours:\n")
@@ -109,4 +109,15 @@ func FormatLineRows(features []project.Feature, contours []project.ContourSet, p
 		}
 	}
 	return b.String()
+}
+
+func groupLayer(groups map[string]project.Group, groupID string) string {
+	if groupID == "" {
+		return ""
+	}
+	group, ok := groups[groupID]
+	if !ok {
+		return ""
+	}
+	return group.Layer
 }
