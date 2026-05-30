@@ -31,13 +31,22 @@ When the TUI opens, the screen has four areas:
 
 Useful keys:
 
-- `F1` opens help.
-- `F2` toggles the map.
-- `Tab` completes the current command.
+- `F1` opens searchable command help.
+- `F2` toggles the ASCII map.
+- `F3` opens the code styling editor.
+- `F4` opens the coordinate conversion workspace.
+- `F5` opens a file browser for `.srv`, `.csv`, or `.geojson` files.
+- `Tab` completes the current command. When the command input is blank, it
+  cycles the active main pane.
 - `Ctrl+n` and `Ctrl+p` cycle completion suggestions.
 - `Up` and `Down` browse command history.
+- `Alt+s` cycles the point sort field.
+- `Alt+d` toggles ascending/descending point sort direction.
 - `/` starts a `filter` command.
-- `Esc` closes help or map.
+- Mouse wheel scrolling works in the point list, line list, help, and code
+  styling tables.
+- Click the top tabs to switch between Project, Help, Map, Styles, and Convert.
+- `Esc` closes help, map, code styling, conversion, or file browsing.
 - `Ctrl+C` exits.
 
 Type commands in the bottom command area and press `Enter`.
@@ -279,7 +288,12 @@ help rad
 help contour gen
 ```
 
-Open the map with `F2` or:
+Press `F1` to open the searchable help browser. Use `/` to filter commands,
+`Enter` to open the selected command, and `Esc` to return to results or close
+help. The help browser and command detail pages support arrow keys, page keys,
+and mouse wheel scrolling.
+
+Open the map with `F2`, the Map tab, or:
 
 ```text
 map
@@ -294,11 +308,39 @@ Map keys:
 
 - Arrow keys pan.
 - `c` toggles stored contour overlays; `~` marks minor and `=` marks index contours.
+- `i` toggles point labels between ID and code. Maps start with point IDs.
 - `+` or `=` zooms in.
 - `-` zooms out.
 - `f` fits to points.
 - `l` toggles line overlay.
+- `F1` opens help from the map.
 - `Esc` or `F2` returns to the main view.
+
+Press `F3`, click the Styles tab, or run:
+
+```text
+style
+```
+
+The code styling editor manages style groups, point-code defaults, reusable
+code libraries, and nominal AutoCAD ACI color previews. Use `g` to add a style
+group and `c` to add a point-code default from any styling pane. Use `Tab` to
+move between panes; the group and point-code tables show headers and row
+ranges, and scroll with arrow keys, page keys, or the mouse wheel.
+
+Press `F4`, click the Convert tab, or run:
+
+```text
+convert
+```
+
+The coordinate conversion workspace stages MGA94/MGA2020 and GDA94/GDA2020
+geographic conversions before committing results to the project. Use `s` and
+`t` for source and target systems, `[` and `]` for MGA source zone, `a` to add
+a row, `i` to browse for a conversion CSV, `g` to browse for an official NTv2
+`.gsb` grid, `r` to calculate, and `c` or `C` to commit one row or all rows.
+Committed conversion output must be MGA coordinates; geographic-to-MGA batches
+derive the target zone from longitude and cannot span multiple zones.
 
 ## 8. Intersections And Resection
 
@@ -568,6 +610,26 @@ DXF includes points, point labels, stored lines, and stored contours. Contour
 labels are placed along readable contour paths and omitted when a path is too
 short or would overlap an existing contour label.
 
+Export LandXML when the project distance unit is metric:
+
+```text
+export landxml terrain
+```
+
+Export polygon area and boundary schedules:
+
+```text
+export boundarycsv terrain_boundaries
+export boundarycsv lot1_boundary polygon=LOT1
+```
+
+Reusable code-style libraries use `.codes.json`:
+
+```text
+export codes field_styles
+import codes field_styles
+```
+
 ## 13. Batch Export Without Opening The TUI
 
 Once a project has been saved, you can export it from the shell:
@@ -585,8 +647,15 @@ These commands append the output extension when missing.
 As you work:
 
 - Use `Tab` to advance through a completion one argument at a time.
+- With an empty command input, use `Tab` and `Shift+Tab` to move focus between
+  the command, point list, and line list panes.
 - Use `Ctrl+n` and `Ctrl+p` to cycle suggestions.
 - Use `Up` and `Down` to revisit earlier commands.
+- Use `Alt+s` and `Alt+d` to change point sorting without typing a command.
+- Use `F1` through `F4` for Help, Map, Styles, and Convert, or click the top
+  tabs. Use `F5` to browse for project, CSV, or GeoJSON files.
+- Use the mouse wheel to scroll long point lists, line lists, help pages, and
+  code styling tables.
 - Use `help <command>` whenever you forget the exact syntax.
 
 A practical day-to-day flow often looks like this:
@@ -619,6 +688,11 @@ Project:
 - `desc`
 - `precision`
 - `units`
+- `undo`
+- `redo`
+- `history`
+- `history info`
+- `info`
 - `quit`
 - `exit`
 
@@ -668,6 +742,7 @@ Traverse:
 Contours:
 
 - `contour gen`
+- `contour regen`
 - `contour list`
 - `contour info`
 - `contour del`
@@ -679,6 +754,17 @@ Lines and stored geometry:
 - `line edit`
 - `line del`
 - `line list`
+- `polyline add`
+- `polyline edit`
+- `polyline del`
+- `polyline list`
+- `polyline info`
+- `polygon add`
+- `polygon edit`
+- `polygon del`
+- `polygon list`
+- `polygon info`
+- `polygon report`
 
 Import and export:
 
@@ -687,6 +773,22 @@ Import and export:
 - `import geojson`
 - `export geojson`
 - `export dxf`
+- `export landxml`
+- `export boundarycsv`
+- `import codes`
+- `export codes`
+
+Styling and conversion:
+
+- `group add`
+- `group edit`
+- `group del`
+- `group list`
+- `code style set`
+- `code style del`
+- `code style list`
+- `style`
+- `convert`
 
 TUI helpers:
 
@@ -701,6 +803,11 @@ TUI helpers:
 - `map zoom out`
 - `help`
 - `help <command>`
+- `F1` help
+- `F2` map
+- `F3` styles
+- `F4` coordinate conversion
+- `F5` file browser
 
 If you forget the exact shape of a command, use `help` inside the app. That is
 the fastest way to confirm the current syntax.

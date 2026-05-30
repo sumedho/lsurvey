@@ -1,0 +1,249 @@
+{
+  "schema_version": 1,
+  "name": "untitled",
+  "description": "test project",
+  "display": {
+    "precision": 3
+  },
+  "units": {
+    "angle": "dd.mmss",
+    "distance": "m"
+  },
+  "points": {
+    "1": {
+      "id": "1",
+      "northing": 1000,
+      "easting": 1000,
+      "elevation": 10,
+      "code": "peg",
+      "description": "hello"
+    },
+    "2": {
+      "id": "2",
+      "northing": 1010,
+      "easting": 1043.345,
+      "elevation": 13.456,
+      "code": "peg"
+    },
+    "4": {
+      "id": "4",
+      "northing": 875,
+      "easting": 900,
+      "elevation": 16.561500000000002,
+      "code": "mid"
+    },
+    "5": {
+      "id": "5",
+      "northing": 843.7651649003002,
+      "easting": 939.0433742945686
+    },
+    "tb2": {
+      "id": "tb2",
+      "northing": 750,
+      "easting": 800,
+      "elevation": 23.123,
+      "code": "peg"
+    },
+    "tbm3": {
+      "id": "tbm3",
+      "northing": 800,
+      "easting": 900,
+      "elevation": 18.2,
+      "code": "peg"
+    }
+  },
+  "lines": {
+    "20": {
+      "id": "20",
+      "from": "1",
+      "to": "2"
+    },
+    "30": {
+      "id": "30",
+      "from": "1",
+      "to": "tb2"
+    },
+    "40": {
+      "id": "40",
+      "from": "tb2",
+      "to": "2"
+    }
+  },
+  "history": [
+    {
+      "at": "2026-05-23T03:16:23.928934Z",
+      "command": "pt add 1000 1000 10.4 peg",
+      "result": "added point 1000",
+      "created": [
+        "point:1000"
+      ]
+    },
+    {
+      "at": "2026-05-23T03:16:39.603164Z",
+      "command": "pt del 1000",
+      "result": "deleted point 1000"
+    },
+    {
+      "at": "2026-05-23T03:17:00.380525Z",
+      "command": "pt add 1 1000 1000 10 peg",
+      "result": "added point 1",
+      "created": [
+        "point:1"
+      ]
+    },
+    {
+      "at": "2026-05-23T03:17:25.740816Z",
+      "command": "pt add 2 1010 1043.345 13.456 peg",
+      "result": "added point 2",
+      "created": [
+        "point:2"
+      ]
+    },
+    {
+      "at": "2026-05-23T03:17:44.17638Z",
+      "command": "inverse 1 2",
+      "result": "az=77°00′31.54″ hd=44.4836 dn=10.0000 de=43.3450 dz=3.4560 sd=44.6176"
+    },
+    {
+      "at": "2026-05-23T03:33:44.276535Z",
+      "command": "inverse 1 2",
+      "result": "az=77°00′31.54″ hd=44.4836 dn=10.0000 de=43.3450 dz=3.4560 sd=44.6176"
+    },
+    {
+      "at": "2026-05-23T03:33:59.93593Z",
+      "command": "line add 20 1 2",
+      "result": "added line 20",
+      "created": [
+        "line:20"
+      ]
+    },
+    {
+      "at": "2026-05-23T03:34:31.029366Z",
+      "command": "pt add 3 750 800 23.123 peg test point",
+      "result": "added point 3",
+      "created": [
+        "point:3"
+      ]
+    },
+    {
+      "at": "2026-05-23T03:34:49.886401Z",
+      "command": "line add 30 1 3",
+      "result": "added line 30",
+      "created": [
+        "line:30"
+      ]
+    },
+    {
+      "at": "2026-05-23T03:35:01.734521Z",
+      "command": "line add 40 3 2",
+      "result": "added line 40",
+      "created": [
+        "line:40"
+      ]
+    },
+    {
+      "at": "2026-05-23T03:36:31.988815Z",
+      "command": "pt add zap 800 900 18.2 peg desc=hello",
+      "result": "added point zap",
+      "created": [
+        "point:zap"
+      ]
+    },
+    {
+      "at": "2026-05-23T03:36:39.668274Z",
+      "command": "inverse zap 1",
+      "result": "az=26°33′54.18″ hd=223.6068 dn=200.0000 de=100.0000 dz=-8.2000 sd=223.7571"
+    },
+    {
+      "at": "2026-05-23T03:37:10.178084Z",
+      "command": "edit 1 desc=hello",
+      "error": "unknown command \"edit\""
+    },
+    {
+      "at": "2026-05-23T03:37:19.357651Z",
+      "command": "pt edit 1 desc=hello",
+      "result": "updated point 1"
+    },
+    {
+      "at": "2026-05-23T03:37:34.266045Z",
+      "command": "pt edit 2 desc=this is good",
+      "error": "edit argument \"is\" must be key=value"
+    },
+    {
+      "at": "2026-05-23T03:37:54.622021Z",
+      "command": "pt edit 3 desc=\"this is good\"",
+      "error": "edit argument \"is\" must be key=value"
+    },
+    {
+      "at": "2026-05-23T04:07:56.716747Z",
+      "command": "midpoint 1 3 as 4 mid",
+      "result": "created point 4",
+      "created": [
+        "point:4"
+      ]
+    },
+    {
+      "at": "2026-05-23T04:08:13.995963Z",
+      "command": "inverse 3 4",
+      "result": "az=38°39′35.31″ hd=160.078 dn=125.000 de=100.000 dz=-6.561 sd=160.213"
+    },
+    {
+      "at": "2026-05-23T04:08:19.324358Z",
+      "command": "inverse 1 3",
+      "result": "az=218°39′35.31″ hd=320.156 dn=-250.000 de=-200.000 dz=13.123 sd=320.425"
+    },
+    {
+      "at": "2026-05-23T04:08:32.625709Z",
+      "command": "inverse 1 3",
+      "result": "az=218°39′35.31″ hd=320.156 dn=-250.000 de=-200.000 dz=13.123 sd=320.425"
+    },
+    {
+      "at": "2026-05-23T04:08:39.555883Z",
+      "command": "inverse 1 4",
+      "result": "az=218°39′35.31″ hd=160.078 dn=-125.000 de=-100.000 dz=6.562 sd=160.213"
+    },
+    {
+      "at": "2026-05-23T04:09:16.274129Z",
+      "command": "inverse 1 3",
+      "result": "az=218°39′35.31″ hd=320.156 dn=-250.000 de=-200.000 dz=13.123 sd=320.425"
+    },
+    {
+      "at": "2026-05-23T04:11:14.384143Z",
+      "command": "inverse 3 4",
+      "result": "az=38°39′35.31″ hd=160.078 dn=125.000 de=100.000 dz=-6.561 sd=160.213"
+    },
+    {
+      "at": "2026-05-23T04:11:34.253367Z",
+      "command": "offset 3 1 50 160.078",
+      "error": "usage: offset \u003cp1\u003e \u003cp2\u003e \u003coffset\u003e \u003cchainage\u003e as \u003cid\u003e [code] OR offset \u003cline_id\u003e \u003coffset\u003e \u003cchainage\u003e as \u003cid\u003e [code]"
+    },
+    {
+      "at": "2026-05-23T04:11:37.958083Z",
+      "command": "offset 3 1 50 160.078 as 5",
+      "result": "created point 5",
+      "created": [
+        "point:5"
+      ]
+    },
+    {
+      "at": "2026-05-23T04:11:49.985801Z",
+      "command": "angle 3 4 5",
+      "result": "inside=89°59′59.56″ outside=270°00′00.44″"
+    },
+    {
+      "at": "2026-05-23T04:12:51.761466Z",
+      "command": "pt rename zap tbm3",
+      "result": "renamed point zap to tbm3"
+    },
+    {
+      "at": "2026-05-23T04:13:02.285474Z",
+      "command": "rename 3 tbm2",
+      "error": "unknown command \"rename\""
+    },
+    {
+      "at": "2026-05-23T04:13:11.571202Z",
+      "command": "pt rename 3 tb2",
+      "result": "renamed point 3 to tb2"
+    }
+  ]
+}
