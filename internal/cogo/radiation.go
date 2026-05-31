@@ -46,7 +46,7 @@ func execRad(p *project.Project, f []string) (Result, error) {
 	if err := storeCreatedPoint(p, pt); err != nil {
 		return Result{}, err
 	}
-	return Result{Message: "created point " + id, Created: []string{"point:" + id}}, nil
+	return staleContours(Result{Message: "created point " + id, Created: []string{"point:" + id}}, "point geometry changed"), nil
 }
 
 func execRad3D(p *project.Project, f []string) (Result, error) {
@@ -90,7 +90,7 @@ func execRad3D(p *project.Project, f []string) (Result, error) {
 	if err := storeCreatedPoint(p, pt); err != nil {
 		return Result{}, err
 	}
-	return Result{Message: "created point " + id, Created: []string{"point:" + id}}, nil
+	return staleContours(Result{Message: "created point " + id, Created: []string{"point:" + id}}, "point geometry changed"), nil
 }
 
 func execMidpoint(p *project.Project, f []string) (Result, error) {
@@ -109,7 +109,7 @@ func execMidpoint(p *project.Project, f []string) (Result, error) {
 	if err := storeCreatedPoint(p, pt); err != nil {
 		return Result{}, err
 	}
-	return Result{Message: "created point " + pt.ID, Created: []string{"point:" + pt.ID}}, nil
+	return staleContours(Result{Message: "created point " + pt.ID, Created: []string{"point:" + pt.ID}}, "point geometry changed"), nil
 }
 
 func execOffset(p *project.Project, f []string) (Result, error) {
@@ -143,7 +143,7 @@ func execOffsetFromPoints(p *project.Project, f []string) (Result, error) {
 	if err := storeCreatedPoint(p, pt); err != nil {
 		return Result{}, err
 	}
-	return Result{Message: "created point " + pt.ID, Created: []string{"point:" + pt.ID}}, nil
+	return staleContours(Result{Message: "created point " + pt.ID, Created: []string{"point:" + pt.ID}}, "point geometry changed"), nil
 }
 
 func execOffsetFromLine(p *project.Project, f []string) (Result, error) {
@@ -171,5 +171,5 @@ func execOffsetFromLine(p *project.Project, f []string) (Result, error) {
 	if err := storeCreatedPoint(p, pt); err != nil {
 		return Result{}, err
 	}
-	return Result{Message: "created point " + pt.ID, Created: []string{"point:" + pt.ID}}, nil
+	return staleContours(Result{Message: "created point " + pt.ID, Created: []string{"point:" + pt.ID}}, "point geometry changed"), nil
 }

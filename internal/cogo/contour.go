@@ -101,9 +101,9 @@ func execContour(p *project.Project, f []string) (Result, error) {
 		_, replaced := p.ContourSets[set.ID]
 		p.ContourSets[set.ID] = set
 		if replaced {
-			return Result{Message: contourGenerationMessage("replaced", set), Updated: []string{"contour:" + set.ID}}, nil
+			return changed(Result{Message: contourGenerationMessage("replaced", set), Updated: []string{"contour:" + set.ID}}), nil
 		}
-		return Result{Message: contourGenerationMessage("generated", set), Created: []string{"contour:" + set.ID}}, nil
+		return changed(Result{Message: contourGenerationMessage("generated", set), Created: []string{"contour:" + set.ID}}), nil
 	case "regen":
 		if len(f) != 3 {
 			return Result{}, fmt.Errorf("usage: contour regen <id>")
@@ -120,7 +120,7 @@ func execContour(p *project.Project, f []string) (Result, error) {
 			return Result{}, err
 		}
 		p.ContourSets[set.ID] = set
-		return Result{Message: contourGenerationMessage("regenerated", set), Updated: []string{"contour:" + set.ID}}, nil
+		return changed(Result{Message: contourGenerationMessage("regenerated", set), Updated: []string{"contour:" + set.ID}}), nil
 	case "list":
 		if len(p.ContourSets) == 0 {
 			return Result{Message: "0 contour sets"}, nil
@@ -150,7 +150,7 @@ func execContour(p *project.Project, f []string) (Result, error) {
 			return Result{}, fmt.Errorf("contour set %q not found", f[2])
 		}
 		delete(p.ContourSets, f[2])
-		return Result{Message: "deleted contour set " + f[2], Updated: []string{"contour:" + f[2]}}, nil
+		return changed(Result{Message: "deleted contour set " + f[2], Updated: []string{"contour:" + f[2]}}), nil
 	default:
 		return Result{}, fmt.Errorf("unknown contour subcommand %q", f[1])
 	}

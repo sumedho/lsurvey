@@ -1203,6 +1203,115 @@ func TestExecuteChangedAndPersistedHistoryTrackMutationsOnly(t *testing.T) {
 	}
 }
 
+func TestExecuteReadOnlyCommandsDoNotReportChanged(t *testing.T) {
+	p := project.New("test")
+	for _, command := range []string{
+		"pt add 1 0 0 0",
+		"pt add 2 10 0 1",
+		"pt add 3 0 10 1",
+		"line add L1 1 2",
+		"group add G1 layer=GROUP1 color=1",
+		"code style set PEG group=G1",
+		"polygon add LOT 1 2 3",
+		"contour gen C1 1 breaklines=none",
+		"trav start 1",
+		"trav close 2",
+		"pt add S1 0 0",
+		"pt add S2 10 0",
+		"pt add T1 1 1",
+		"pt add T2 11 1",
+	} {
+		mustExec(t, p, command)
+	}
+	for _, command := range []string{
+		"inverse 1 2",
+		"pt list",
+		"line list",
+		"group info G1",
+		"code style list",
+		"polygon report LOT",
+		"contour info C1",
+		"trav show",
+		"transform fit S1 T1 S2 T2",
+	} {
+		result, err := Execute(p, command)
+		if err != nil {
+			t.Fatalf("%s: %v", command, err)
+		}
+		if result.Changed {
+			t.Fatalf("%s reported changed: %+v", command, result)
+		}
+	}
+}
+
+func TestExecuteMutatingCommandsReportChanged(t *testing.T) {
+	tests := []struct {
+		name    string
+		setup   []string
+		command string
+	}{
+		{name: "point", command: "pt add 1 0 0"},
+		{name: "line", setup: []string{"pt add 1 0 0", "pt add 2 10 0"}, command: "line add L1 1 2"},
+		{name: "group", command: "group add G1 layer=GROUP1 color=1"},
+		{name: "code style", setup: []string{"group add G1 layer=GROUP1 color=1"}, command: "code style set PEG group=G1"},
+		{name: "traverse", setup: []string{"pt add 1 0 0"}, command: "trav start 1"},
+		{name: "contour", setup: []string{"pt add 1 0 0 0", "pt add 2 10 0 1", "pt add 3 0 10 1"}, command: "contour gen C1 1 breaklines=none"},
+		{name: "units", command: "units distance=ft"},
+		{name: "shift", setup: []string{"pt add 1 0 0"}, command: "shift 1 east=1"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			p := project.New("test")
+			for _, command := range tt.setup {
+				mustExec(t, p, command)
+			}
+			result, err := Execute(p, tt.command)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !result.Changed {
+				t.Fatalf("%s did not report changed: %+v", tt.command, result)
+			}
+		})
+	}
+}
+
+func TestLineGenReportsUnchangedWhenOnlyDuplicatesAreSkipped(t *testing.T) {
+	p := project.New("test")
+	mustExec(t, p, "pt add 1 0 0 PEG")
+	mustExec(t, p, "pt add 2 10 0 PEG")
+	mustExec(t, p, "line gen PEG")
+	result, err := Execute(p, "line gen PEG")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Changed {
+		t.Fatalf("duplicate line gen should not change project: %+v", result)
+	}
+}
+
+func TestResultStaleContourReasonControlsContourStaleness(t *testing.T) {
+	p := project.New("test")
+	mustExec(t, p, "pt add 1 0 0")
+	p.ContourSets["C1"] = project.ContourSet{ID: "C1", Generation: &project.ContourGenerationSpec{Interval: 1}}
+
+	result, err := Execute(p, "pt edit 1 code=PEG")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !result.Changed || result.StaleContoursReason != "" || p.ContourSets["C1"].Stale {
+		t.Fatalf("non-geometry edit should not stale contours: result=%+v contour=%+v", result, p.ContourSets["C1"])
+	}
+
+	result, err = Execute(p, "pt edit 1 east=1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !result.Changed || result.StaleContoursReason != "point geometry changed" || !p.ContourSets["C1"].Stale {
+		t.Fatalf("geometry edit should stale contours: result=%+v contour=%+v", result, p.ContourSets["C1"])
+	}
+}
+
 func mustExec(t *testing.T, p *project.Project, command string) {
 	t.Helper()
 	if _, err := Execute(p, command); err != nil {

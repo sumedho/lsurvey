@@ -49,7 +49,7 @@ func execLine(p *project.Project, f []string) (Result, error) {
 		if err := storeFeature(p, feature); err != nil {
 			return Result{}, err
 		}
-		return Result{Message: "added line " + f[2], Created: []string{"line:" + f[2]}}, nil
+		return staleContours(Result{Message: "added line " + f[2], Created: []string{"line:" + f[2]}}, "feature geometry changed"), nil
 	case "gen":
 		if len(f) < 3 || len(f) > 4 {
 			return Result{}, fmt.Errorf("usage: line gen <code> [group=<id>]")
@@ -74,7 +74,7 @@ func execLine(p *project.Project, f []string) (Result, error) {
 			return Result{}, fmt.Errorf("line %q not found", f[2])
 		}
 		delete(p.Features, f[2])
-		return Result{Message: "deleted line " + f[2], Updated: []string{"line:" + f[2]}}, nil
+		return staleContours(Result{Message: "deleted line " + f[2], Updated: []string{"line:" + f[2]}}, "feature geometry changed"), nil
 	case "edit":
 		if len(f) < 4 {
 			return Result{}, fmt.Errorf("usage: line edit <id> [from=] [to=] [code=] [desc=] [group=<id>|none] [terrain=none|standard|ridge|drain]")
@@ -84,6 +84,7 @@ func execLine(p *project.Project, f []string) (Result, error) {
 		if !ok || feature.Kind != project.FeatureLine {
 			return Result{}, fmt.Errorf("line %q not found", id)
 		}
+		terrainInputChanged := false
 		for _, arg := range f[3:] {
 			k, v, ok := strings.Cut(arg, "=")
 			if !ok {
@@ -91,10 +92,13 @@ func execLine(p *project.Project, f []string) (Result, error) {
 			}
 			switch k {
 			case "from":
+				terrainInputChanged = true
 				feature.PointIDs[0] = v
 			case "to":
+				terrainInputChanged = true
 				feature.PointIDs[1] = v
 			case "code":
+				terrainInputChanged = true
 				feature.Code = v
 			case "desc":
 				feature.Description = v
@@ -106,6 +110,7 @@ func execLine(p *project.Project, f []string) (Result, error) {
 				}
 				feature.GroupID = v
 			case "terrain":
+				terrainInputChanged = true
 				if !validTerrainRole(v) {
 					return Result{}, fmt.Errorf("terrain must be none, standard, ridge, or drain")
 				}
@@ -121,7 +126,7 @@ func execLine(p *project.Project, f []string) (Result, error) {
 			return Result{}, err
 		}
 		p.Features[id] = feature
-		return Result{Message: "updated line " + id, Updated: []string{"line:" + id}}, nil
+		return staleContoursIf(Result{Message: "updated line " + id, Updated: []string{"line:" + id}}, "feature terrain input changed", terrainInputChanged), nil
 	case "intersect":
 		if len(f) < 8 || f[6] != "as" {
 			return Result{}, fmt.Errorf("usage: line intersect <a1> <a2> <b1> <b2> as <id> [code]")
@@ -150,7 +155,7 @@ func execLine(p *project.Project, f []string) (Result, error) {
 		if err := storeCreatedPoint(p, pt); err != nil {
 			return Result{}, err
 		}
-		return Result{Message: "created point " + pt.ID, Created: []string{"point:" + pt.ID}}, nil
+		return staleContours(Result{Message: "created point " + pt.ID, Created: []string{"point:" + pt.ID}}, "point geometry changed"), nil
 	case "list":
 		return Result{Message: fmt.Sprintf("%d lines", countFeatures(p, project.FeatureLine))}, nil
 	default:
@@ -187,10 +192,14 @@ func genLinesByCode(p *project.Project, code, groupID string) (Result, error) {
 		p.Features[id] = project.Feature{ID: id, Kind: project.FeatureLine, PointIDs: []string{from, to}, Code: code, GroupID: groupID}
 		created = append(created, "line:"+id)
 	}
-	return Result{
+	result := Result{
 		Message: fmt.Sprintf("generated %d lines for code %s, skipped %d duplicates", len(created), code, skipped),
 		Created: created,
-	}, nil
+	}
+	if len(created) == 0 {
+		return result, nil
+	}
+	return staleContours(result, "line geometry changed"), nil
 }
 
 func hasLineBetween(p *project.Project, a, b string) bool {
@@ -222,7 +231,7 @@ func execGroup(p *project.Project, f []string) (Result, error) {
 			return Result{}, fmt.Errorf("group requires layer and color")
 		}
 		p.Groups[group.ID] = group
-		return Result{Message: "added group " + group.ID, Created: []string{"group:" + group.ID}}, nil
+		return changed(Result{Message: "added group " + group.ID, Created: []string{"group:" + group.ID}}), nil
 	case "edit":
 		if len(f) < 4 {
 			return Result{}, fmt.Errorf("usage: group edit <id> [layer=<name>] [color=<1..255>] [desc=<text>]")
@@ -235,7 +244,7 @@ func execGroup(p *project.Project, f []string) (Result, error) {
 			return Result{}, err
 		}
 		p.Groups[group.ID] = group
-		return Result{Message: "updated group " + group.ID, Updated: []string{"group:" + group.ID}}, nil
+		return changed(Result{Message: "updated group " + group.ID, Updated: []string{"group:" + group.ID}}), nil
 	case "del":
 		if len(f) != 3 {
 			return Result{}, fmt.Errorf("usage: group del <id>")
@@ -259,7 +268,7 @@ func execGroup(p *project.Project, f []string) (Result, error) {
 			}
 		}
 		delete(p.Groups, f[2])
-		return Result{Message: "deleted group " + f[2], Updated: []string{"group:" + f[2]}}, nil
+		return changed(Result{Message: "deleted group " + f[2], Updated: []string{"group:" + f[2]}}), nil
 	case "list":
 		return Result{Message: fmt.Sprintf("%d groups", len(p.Groups))}, nil
 	case "info":
@@ -293,7 +302,7 @@ func execCode(p *project.Project, f []string) (Result, error) {
 			return Result{}, err
 		}
 		p.PointCodeStyles[f[3]] = groupID
-		return Result{Message: fmt.Sprintf("set point code style %s group=%s", f[3], groupID), Updated: []string{"code:" + f[3]}}, nil
+		return changed(Result{Message: fmt.Sprintf("set point code style %s group=%s", f[3], groupID), Updated: []string{"code:" + f[3]}}), nil
 	case "del":
 		if len(f) != 4 {
 			return Result{}, fmt.Errorf("usage: code style del <code>")
@@ -302,7 +311,7 @@ func execCode(p *project.Project, f []string) (Result, error) {
 			return Result{}, fmt.Errorf("point code style %q not found", f[3])
 		}
 		delete(p.PointCodeStyles, f[3])
-		return Result{Message: "deleted point code style " + f[3], Updated: []string{"code:" + f[3]}}, nil
+		return changed(Result{Message: "deleted point code style " + f[3], Updated: []string{"code:" + f[3]}}), nil
 	case "list":
 		if len(f) != 3 {
 			return Result{}, fmt.Errorf("usage: code style list")
@@ -386,7 +395,7 @@ func execOrderedFeature(p *project.Project, f []string, kind string) (Result, er
 		if err := storeFeature(p, feature); err != nil {
 			return Result{}, err
 		}
-		return Result{Message: "added " + name + " " + feature.ID, Created: []string{name + ":" + feature.ID}}, nil
+		return staleContours(Result{Message: "added " + name + " " + feature.ID, Created: []string{name + ":" + feature.ID}}, "feature geometry changed"), nil
 	case "edit":
 		if len(f) < 4 {
 			return Result{}, fmt.Errorf("usage: %s edit <id> [points=<p1,p2,...>] [code=] [desc=] [group=<id>|none] [terrain=none|standard|ridge|drain]", name)
@@ -395,6 +404,7 @@ func execOrderedFeature(p *project.Project, f []string, kind string) (Result, er
 		if !ok || feature.Kind != kind {
 			return Result{}, fmt.Errorf("%s %q not found", name, f[2])
 		}
+		terrainInputChanged := featureFieldsAffectTerrainInput(f[3:])
 		if err := applyFeatureFields(p, &feature, f[3:], kind != project.FeaturePolygon); err != nil {
 			return Result{}, err
 		}
@@ -402,7 +412,7 @@ func execOrderedFeature(p *project.Project, f []string, kind string) (Result, er
 			return Result{}, err
 		}
 		p.Features[feature.ID] = feature
-		return Result{Message: "updated " + name + " " + feature.ID, Updated: []string{name + ":" + feature.ID}}, nil
+		return staleContoursIf(Result{Message: "updated " + name + " " + feature.ID, Updated: []string{name + ":" + feature.ID}}, "feature terrain input changed", terrainInputChanged), nil
 	case "del":
 		if len(f) != 3 {
 			return Result{}, fmt.Errorf("usage: %s del <id>", name)
@@ -412,7 +422,7 @@ func execOrderedFeature(p *project.Project, f []string, kind string) (Result, er
 			return Result{}, fmt.Errorf("%s %q not found", name, f[2])
 		}
 		delete(p.Features, f[2])
-		return Result{Message: "deleted " + name + " " + f[2], Updated: []string{name + ":" + f[2]}}, nil
+		return staleContours(Result{Message: "deleted " + name + " " + f[2], Updated: []string{name + ":" + f[2]}}, "feature geometry changed"), nil
 	case "list":
 		return Result{Message: fmt.Sprintf("%d %ss", countFeatures(p, kind), name)}, nil
 	case "info":
@@ -432,6 +442,19 @@ func execOrderedFeature(p *project.Project, f []string, kind string) (Result, er
 	default:
 		return Result{}, fmt.Errorf("unknown %s subcommand %q", name, f[1])
 	}
+}
+
+func featureFieldsAffectTerrainInput(fields []string) bool {
+	for _, arg := range fields {
+		k, _, ok := strings.Cut(arg, "=")
+		if !ok {
+			continue
+		}
+		if k == "points" || k == "code" || k == "terrain" {
+			return true
+		}
+	}
+	return false
 }
 
 func polygonReport(p *project.Project, selection string) (Result, error) {

@@ -20,7 +20,7 @@ func execTraverse(p *project.Project, f []string) (Result, error) {
 			return Result{}, err
 		}
 		p.Traverse = &project.TraverseState{Start: f[2], Current: f[2], LegPointIDs: []string{}}
-		return Result{Message: "started traverse at " + f[2]}, nil
+		return changed(Result{Message: "started traverse at " + f[2]}), nil
 	case "leg":
 		if p.Traverse == nil {
 			return Result{}, fmt.Errorf("no active traverse")
@@ -63,7 +63,7 @@ func execTraverse(p *project.Project, f []string) (Result, error) {
 		p.Traverse.Current = id
 		p.Traverse.Close = ""
 		p.Traverse.LegPointIDs = append(p.Traverse.LegPointIDs, id)
-		return Result{Message: "created traverse point " + id + " current=" + p.Traverse.Current, Created: []string{"point:" + id}}, nil
+		return staleContours(Result{Message: "created traverse point " + id + " current=" + p.Traverse.Current, Created: []string{"point:" + id}}, "point geometry changed"), nil
 	case "close":
 		if p.Traverse == nil {
 			return Result{}, fmt.Errorf("no active traverse")
@@ -81,7 +81,7 @@ func execTraverse(p *project.Project, f []string) (Result, error) {
 		}
 		p.Traverse.Close = f[2]
 		misclose := geom.Inverse(current, known)
-		return Result{Message: fmt.Sprintf("misclose az=%s hd=%s", misclose.Azimuth.FormatDMS(2), formatDistance(misclose.HorizontalDistance, p.DisplayPrecision()))}, nil
+		return changed(Result{Message: fmt.Sprintf("misclose az=%s hd=%s", misclose.Azimuth.FormatDMS(2), formatDistance(misclose.HorizontalDistance, p.DisplayPrecision()))}), nil
 	case "show":
 		if p.Traverse == nil {
 			return Result{}, fmt.Errorf("no active traverse")
@@ -138,5 +138,5 @@ func adjustTraverse(p *project.Project) (Result, error) {
 		updated = append(updated, "point:"+id)
 	}
 	p.Traverse.Current = p.Traverse.Close
-	return Result{Message: fmt.Sprintf("adjusted %d traverse points", count), Updated: updated}, nil
+	return staleContours(Result{Message: fmt.Sprintf("adjusted %d traverse points", count), Updated: updated}, "point geometry changed"), nil
 }

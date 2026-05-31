@@ -85,6 +85,9 @@ type Model struct {
 	message  string
 	lastErr  string
 	quitting bool
+
+	completionSuggestions []string
+	completionDirty       bool
 }
 
 func NewModel(p *project.Project, path string) Model {
@@ -136,6 +139,7 @@ func newModel(p *project.Project, path, version string, showSplash bool) Model {
 		convert:    newConversionState(),
 		message:    "F1 opens help. F5 browses for .srv/.csv/.geojson files. Tab accepts completions or switches panes when input is blank.",
 	}
+	m.invalidateCompletions()
 	if showSplash {
 		m.mode = ModeSplash
 	}
@@ -588,6 +592,7 @@ func (m *Model) syncSessionState() {
 	m.path = m.session.Path
 	m.version = m.session.Version
 	m.dirty = m.session.Dirty
+	m.invalidateCompletions()
 }
 
 func (m Model) executeInput() (tea.Model, tea.Cmd) {
@@ -908,7 +913,15 @@ func (m *Model) cycleSort() {
 }
 
 func (m *Model) refreshCompletions() {
-	m.input.SetSuggestions(commandSuggestionsForInput(m.project, m.input.Value()))
+	if m.completionDirty || m.completionSuggestions == nil {
+		m.completionSuggestions = commandSuggestions(m.project)
+		m.completionDirty = false
+	}
+	m.input.SetSuggestions(commandSuggestionsForInputTemplates(m.completionSuggestions, m.input.Value()))
+}
+
+func (m *Model) invalidateCompletions() {
+	m.completionDirty = true
 }
 
 func (m *Model) recordHistory(command string) {

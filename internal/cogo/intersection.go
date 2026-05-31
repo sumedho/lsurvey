@@ -44,7 +44,7 @@ func execIntersect(p *project.Project, f []string) (Result, error) {
 		if err := storeCreatedPoint(p, pt); err != nil {
 			return Result{}, err
 		}
-		return Result{Message: "created point " + pt.ID, Created: []string{"point:" + pt.ID}}, nil
+		return staleContours(Result{Message: "created point " + pt.ID, Created: []string{"point:" + pt.ID}}, "point geometry changed"), nil
 	case "distance-distance":
 		if len(f) < 10 || f[8] != "as" {
 			return Result{}, fmt.Errorf("usage: intersect distance-distance <p1> <dist1> <p2> <dist2> choose left|right as <id> [code]")
@@ -75,7 +75,7 @@ func execIntersect(p *project.Project, f []string) (Result, error) {
 		if err := storeCreatedPoint(p, pt); err != nil {
 			return Result{}, err
 		}
-		return Result{Message: "created point " + pt.ID, Created: []string{"point:" + pt.ID}}, nil
+		return staleContours(Result{Message: "created point " + pt.ID, Created: []string{"point:" + pt.ID}}, "point geometry changed"), nil
 	case "bearing-distance":
 		if len(f) < 10 {
 			return Result{}, fmt.Errorf("usage: intersect bearing-distance <p1> <brg> <p2> <dist> choose near|far as <id> [code]")
@@ -112,7 +112,7 @@ func execIntersect(p *project.Project, f []string) (Result, error) {
 		if err := storeCreatedPoint(p, pt); err != nil {
 			return Result{}, err
 		}
-		return Result{Message: "created point " + pt.ID, Created: []string{"point:" + pt.ID}}, nil
+		return staleContours(Result{Message: "created point " + pt.ID, Created: []string{"point:" + pt.ID}}, "point geometry changed"), nil
 	default:
 		return Result{}, fmt.Errorf("unknown intersect type %q", f[1])
 	}

@@ -22,5 +22,5 @@ func execUnits(p *project.Project, f []string) (Result, error) {
 	for k, v := range updates {
 		p.Units[k] = v
 	}
-	return Result{Message: "updated units"}, nil
+	return changed(Result{Message: "updated units"}), nil
 }

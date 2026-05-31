@@ -96,7 +96,10 @@ func commandSuggestions(p *project.Project) []string {
 }
 
 func commandSuggestionsForInput(p *project.Project, value string) []string {
-	suggestions := commandSuggestions(p)
+	return commandSuggestionsForInputTemplates(commandSuggestions(p), value)
+}
+
+func commandSuggestionsForInputTemplates(suggestions []string, value string) []string {
 	contextual := contextualSuggestion(value, suggestions)
 	if contextual == "" {
 		return suggestions

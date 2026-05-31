@@ -43,7 +43,7 @@ func execResect(p *project.Project, f []string) (Result, error) {
 	if err := storeCreatedPoint(p, pt); err != nil {
 		return Result{}, err
 	}
-	return Result{Message: "created point " + pt.ID, Created: []string{"point:" + pt.ID}}, nil
+	return staleContours(Result{Message: "created point " + pt.ID, Created: []string{"point:" + pt.ID}}, "point geometry changed"), nil
 }
 
 func execShift(p *project.Project, f []string) (Result, error) {
@@ -131,7 +131,7 @@ func execShift(p *project.Project, f []string) (Result, error) {
 		p.GridGround.AnchorEasting += deltaE
 		p.GridGround.AnchorNorthing += deltaN
 	}
-	return Result{Message: fmt.Sprintf("shifted %d points", len(p.Points)), Updated: updated}, nil
+	return staleContours(Result{Message: fmt.Sprintf("shifted %d points", len(p.Points)), Updated: updated}, "point geometry changed"), nil
 }
 
 func execRotate(p *project.Project, f []string) (Result, error) {
@@ -165,7 +165,7 @@ func execRotate(p *project.Project, f []string) (Result, error) {
 		p.GridGround.AnchorEasting = anchor.Easting
 		p.GridGround.AnchorNorthing = anchor.Northing
 	}
-	return Result{Message: fmt.Sprintf("rotated %d points by %s", len(p.Points), f[2]), Updated: updated}, nil
+	return staleContours(Result{Message: fmt.Sprintf("rotated %d points by %s", len(p.Points), f[2]), Updated: updated}, "point geometry changed"), nil
 }
 
 func shiftPolylines(polylines []project.ContourPolyline, east, north float64, elev *float64) {
@@ -255,7 +255,7 @@ func execScaleApply(p *project.Project, f []string) (Result, error) {
 		CSF:            csf,
 	}
 	updated := scaleHorizontalGeometry(p, base.Easting, base.Northing, 1/csf)
-	return Result{Message: fmt.Sprintf("applied scale to %d points", len(p.Points)), Updated: updated}, nil
+	return staleContours(Result{Message: fmt.Sprintf("applied scale to %d points", len(p.Points)), Updated: updated}, "point geometry changed"), nil
 }
 
 func execScaleReverse(p *project.Project, f []string) (Result, error) {
@@ -268,7 +268,7 @@ func execScaleReverse(p *project.Project, f []string) (Result, error) {
 	conversion := p.GridGround
 	updated := scaleHorizontalGeometry(p, conversion.AnchorEasting, conversion.AnchorNorthing, conversion.CSF)
 	p.GridGround = nil
-	return Result{Message: fmt.Sprintf("reversed scale for %d points", len(p.Points)), Updated: updated}, nil
+	return staleContours(Result{Message: fmt.Sprintf("reversed scale for %d points", len(p.Points)), Updated: updated}, "point geometry changed"), nil
 }
 
 func scaleHorizontalGeometry(p *project.Project, anchorE, anchorN, factor float64) []string {

@@ -55,7 +55,7 @@ func execPoint(p *project.Project, f []string) (Result, error) {
 			groupID = v
 		}
 		p.Points[id] = p.ApplyPointCodeStyle(geom.Point{ID: id, Easting: e, Northing: n, Elevation: z, Code: code, GroupID: groupID})
-		return Result{Message: "added point " + id, Created: []string{"point:" + id}}, nil
+		return staleContours(Result{Message: "added point " + id, Created: []string{"point:" + id}}, "point geometry changed"), nil
 	case "edit":
 		if len(f) < 4 {
 			return Result{}, fmt.Errorf("usage: pt edit <id> [east=] [north=] [elev=] [code=] [desc=] [group=<id>|none]")
@@ -65,6 +65,7 @@ func execPoint(p *project.Project, f []string) (Result, error) {
 		if !ok {
 			return Result{}, fmt.Errorf("point %q not found", id)
 		}
+		geometryChanged := false
 		for _, arg := range f[3:] {
 			k, v, ok := strings.Cut(arg, "=")
 			if !ok {
@@ -72,18 +73,21 @@ func execPoint(p *project.Project, f []string) (Result, error) {
 			}
 			switch k {
 			case "north", "n", "northing":
+				geometryChanged = true
 				x, err := parseFloat(k, v)
 				if err != nil {
 					return Result{}, err
 				}
 				pt.Northing = x
 			case "east", "e", "easting":
+				geometryChanged = true
 				x, err := parseFloat(k, v)
 				if err != nil {
 					return Result{}, err
 				}
 				pt.Easting = x
 			case "elev", "z":
+				geometryChanged = true
 				x, err := parseFloat(k, v)
 				if err != nil {
 					return Result{}, err
@@ -105,7 +109,7 @@ func execPoint(p *project.Project, f []string) (Result, error) {
 			}
 		}
 		p.Points[id] = pt
-		return Result{Message: "updated point " + id, Updated: []string{"point:" + id}}, nil
+		return staleContoursIf(Result{Message: "updated point " + id, Updated: []string{"point:" + id}}, "point geometry changed", geometryChanged), nil
 	case "del":
 		if len(f) != 3 {
 			return Result{}, fmt.Errorf("usage: pt del <id>")
@@ -122,7 +126,7 @@ func execPoint(p *project.Project, f []string) (Result, error) {
 			}
 		}
 		delete(p.Points, id)
-		return Result{Message: "deleted point " + id, Updated: []string{"point:" + id}}, nil
+		return staleContours(Result{Message: "deleted point " + id, Updated: []string{"point:" + id}}, "point geometry changed"), nil
 	case "rename":
 		if len(f) != 4 {
 			return Result{}, fmt.Errorf("usage: pt rename <old> <new>")
@@ -145,7 +149,7 @@ func execPoint(p *project.Project, f []string) (Result, error) {
 			}
 			p.Features[id] = feature
 		}
-		return Result{Message: "renamed point " + f[2] + " to " + f[3], Updated: []string{"point:" + f[3]}}, nil
+		return staleContours(Result{Message: "renamed point " + f[2] + " to " + f[3], Updated: []string{"point:" + f[3]}}, "point geometry changed"), nil
 	case "list":
 		return Result{Message: fmt.Sprintf("%d points", len(p.Points))}, nil
 	default:

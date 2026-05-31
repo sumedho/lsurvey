@@ -31,10 +31,58 @@ func TestCommandCompletionIncludesProjectPointHints(t *testing.T) {
 	}
 }
 
+func TestCommandCompletionCachesProjectSuggestionsUntilInvalidated(t *testing.T) {
+	m := NewModel(project.New("test"), "")
+	m.refreshCompletions()
+	initialCount := len(m.completionSuggestions)
+	m.project.Points["1"] = geom.Point{ID: "1", Easting: 100, Northing: 200, Code: "UNIQUECODE"}
+
+	m.refreshCompletions()
+	if len(m.completionSuggestions) != initialCount || hasSuggestion(m.completionSuggestions, "line gen UNIQUECODE") {
+		t.Fatal("direct project mutation should not rebuild cached suggestions before invalidation")
+	}
+
+	m.invalidateCompletions()
+	m.refreshCompletions()
+	if !hasSuggestion(m.completionSuggestions, "line gen UNIQUECODE") {
+		t.Fatal("expected point suggestions after invalidating completion cache")
+	}
+}
+
+func hasSuggestion(suggestions []string, want string) bool {
+	for _, suggestion := range suggestions {
+		if suggestion == want {
+			return true
+		}
+	}
+	return false
+}
+
+func TestCommandCompletionReusesCacheForInputContext(t *testing.T) {
+	p := project.New("test")
+	p.Points["1"] = geom.Point{ID: "1", Easting: 100, Northing: 200}
+	m := NewModel(p, "")
+
+	m.input.SetValue("inverse 1")
+	m.refreshCompletions()
+	inverseMatches := m.input.MatchedSuggestions()
+	if len(inverseMatches) == 0 || !strings.HasPrefix(inverseMatches[0], "inverse 1") {
+		t.Fatalf("inverse suggestions=%v", inverseMatches)
+	}
+
+	m.input.SetValue("rad 1")
+	m.refreshCompletions()
+	radMatches := m.input.MatchedSuggestions()
+	if len(radMatches) == 0 || !strings.HasPrefix(radMatches[0], "rad 1") {
+		t.Fatalf("rad suggestions=%v", radMatches)
+	}
+}
+
 func TestCommandCompletionKeepsRemainingRadArgumentsAfterPoint(t *testing.T) {
 	m := NewModel(project.New("test"), "")
 	m.project.Points["1"] = geom.Point{ID: "1", Easting: 100, Northing: 200}
 	m.project.Points["7"] = geom.Point{ID: "7", Easting: 110, Northing: 210}
+	m.invalidateCompletions()
 	m.input.SetValue("rad 1")
 	m.refreshCompletions()
 	matches := m.input.MatchedSuggestions()
@@ -52,6 +100,7 @@ func TestCommandCompletionKeepsRemainingRadArgumentsAfterPoint(t *testing.T) {
 func TestCommandCompletionKeepsRemainingIntersectArgumentsAfterPoint(t *testing.T) {
 	m := NewModel(project.New("test"), "")
 	m.project.Points["1"] = geom.Point{ID: "1", Easting: 100, Northing: 200}
+	m.invalidateCompletions()
 	m.input.SetValue("intersect bearing-bearing 1")
 	m.refreshCompletions()
 	matches := m.input.MatchedSuggestions()
@@ -71,6 +120,7 @@ func TestCommandCompletionSuggestsNextPointIDForPointAdd(t *testing.T) {
 	m.project.Points["1"] = geom.Point{ID: "1", Easting: 100, Northing: 200}
 	m.project.Points["A"] = geom.Point{ID: "A", Easting: 110, Northing: 210}
 	m.project.Points["3"] = geom.Point{ID: "3", Easting: 120, Northing: 220}
+	m.invalidateCompletions()
 	m.input.SetValue("pt add")
 	m.refreshCompletions()
 	matches := m.input.MatchedSuggestions()
@@ -86,6 +136,7 @@ func TestCommandCompletionSuggestsNextPointIDForRenameAndLineOffset(t *testing.T
 	m := NewModel(project.New("test"), "")
 	m.project.Points["1"] = geom.Point{ID: "1", Easting: 100, Northing: 200}
 	m.project.Points["2"] = geom.Point{ID: "2", Easting: 110, Northing: 210}
+	m.invalidateCompletions()
 	m.ExecuteCommand("line add L1 1 2")
 
 	m.input.SetValue("pt rename 1")
@@ -122,6 +173,7 @@ func TestCommandCompletionUsesTraverseLegWithoutAsID(t *testing.T) {
 func TestCommandCompletionIncludesShiftAndRotate(t *testing.T) {
 	m := NewModel(project.New("test"), "")
 	m.project.Points["1"] = geom.Point{ID: "1", Easting: 100, Northing: 200}
+	m.invalidateCompletions()
 	m.input.SetValue("shift 1")
 	m.refreshCompletions()
 	matches := m.input.MatchedSuggestions()
@@ -154,6 +206,7 @@ func TestCommandCompletionIncludesShiftAndRotate(t *testing.T) {
 func TestCommandCompletionIncludesLineGenForKnownCode(t *testing.T) {
 	m := NewModel(project.New("test"), "")
 	m.project.Points["1"] = geom.Point{ID: "1", Easting: 100, Northing: 200, Code: "PEG"}
+	m.invalidateCompletions()
 	m.input.SetValue("line gen")
 	m.refreshCompletions()
 	matches := m.input.MatchedSuggestions()
@@ -200,6 +253,7 @@ func TestCommandCompletionIncludesUndoHistoryAndInfo(t *testing.T) {
 func TestCommandCompletionIncludesCloseCommand(t *testing.T) {
 	m := NewModel(project.New("test"), "")
 	m.project.Points["1"] = geom.Point{ID: "1", Easting: 100, Northing: 200}
+	m.invalidateCompletions()
 	m.input.SetValue("close 1")
 	m.refreshCompletions()
 	matches := m.input.MatchedSuggestions()
@@ -211,6 +265,7 @@ func TestCommandCompletionIncludesCloseCommand(t *testing.T) {
 func TestCommandCompletionTabFillsOneArgumentAtATime(t *testing.T) {
 	m := NewModel(project.New("test"), "")
 	m.project.Points["1"] = geom.Point{ID: "1", Easting: 100, Northing: 200}
+	m.invalidateCompletions()
 	m.input.SetValue("rad ")
 	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyTab})
 	got := updated.(Model)
@@ -231,6 +286,7 @@ func TestCommandCompletionTabFillsNextPointIDOnly(t *testing.T) {
 	m := NewModel(project.New("test"), "")
 	m.project.Points["1"] = geom.Point{ID: "1", Easting: 100, Northing: 200}
 	m.project.Points["3"] = geom.Point{ID: "3", Easting: 120, Northing: 220}
+	m.invalidateCompletions()
 	m.input.SetValue("pt add ")
 	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyTab})
 	got := updated.(Model)
@@ -242,6 +298,7 @@ func TestCommandCompletionTabFillsNextPointIDOnly(t *testing.T) {
 func TestCommandCompletionKeepsPointAddHintAfterCoordinateInput(t *testing.T) {
 	m := NewModel(project.New("test"), "")
 	m.project.Points["3"] = geom.Point{ID: "3", Easting: 100, Northing: 200}
+	m.invalidateCompletions()
 	m.input.SetValue("pt add 4 123.45")
 	m.refreshCompletions()
 	matches := m.input.MatchedSuggestions()
@@ -262,6 +319,7 @@ func TestCommandCompletionKeepsPointAddHintAfterCoordinateInput(t *testing.T) {
 func TestCommandCompletionKeepsRadHintAfterTypedBearing(t *testing.T) {
 	m := NewModel(project.New("test"), "")
 	m.project.Points["1"] = geom.Point{ID: "1", Easting: 100, Northing: 200}
+	m.invalidateCompletions()
 	m.input.SetValue("rad 1 12.3015")
 	m.refreshCompletions()
 	matches := m.input.MatchedSuggestions()
