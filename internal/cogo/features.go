@@ -2,7 +2,6 @@ package cogo
 
 import (
 	"fmt"
-	"math"
 	"sort"
 	"strconv"
 	"strings"
@@ -10,6 +9,7 @@ import (
 	"lsurvey/internal/boundary"
 	"lsurvey/internal/geom"
 	"lsurvey/internal/project"
+	"lsurvey/internal/validate"
 )
 
 func execLine(p *project.Project, f []string) (Result, error) {
@@ -164,7 +164,7 @@ func execLine(p *project.Project, f []string) (Result, error) {
 }
 
 func validTerrainRole(role string) bool {
-	return role == "none" || role == "standard" || role == "ridge" || role == "drain"
+	return validate.ValidTerrainRole(role)
 }
 
 func genLinesByCode(p *project.Project, code, groupID string) (Result, error) {
@@ -539,73 +539,17 @@ func storeFeature(p *project.Project, feature project.Feature) error {
 }
 
 func validateFeature(p *project.Project, feature project.Feature) error {
-	min := 2
-	if feature.Kind == project.FeaturePolygon {
-		min = 3
-	}
-	if len(feature.PointIDs) < min || feature.Kind == project.FeatureLine && len(feature.PointIDs) != 2 {
-		return fmt.Errorf("%s %q has invalid point count", feature.Kind, feature.ID)
-	}
-	for i, id := range feature.PointIDs {
-		if _, ok := p.Points[id]; !ok {
-			return fmt.Errorf("point %q not found", id)
-		}
-		if i > 0 && id == feature.PointIDs[i-1] {
-			return fmt.Errorf("%s %q has duplicate consecutive points", feature.Kind, feature.ID)
-		}
-	}
-	if feature.Kind == project.FeaturePolygon {
-		if feature.PointIDs[0] == feature.PointIDs[len(feature.PointIDs)-1] {
-			return fmt.Errorf("polygon closure is implicit; do not repeat the first point")
-		}
-		if polygonInvalid(p, feature.PointIDs) {
-			return fmt.Errorf("polygon %q is zero-area or self-intersecting", feature.ID)
-		}
-	}
-	if feature.GroupID != "" {
-		return requireGroup(p, feature.GroupID)
-	}
-	return nil
-}
-
-func polygonInvalid(p *project.Project, ids []string) bool {
-	area := 0.0
-	for i := range ids {
-		a, b := p.Points[ids[i]], p.Points[ids[(i+1)%len(ids)]]
-		area += a.Easting*b.Northing - b.Easting*a.Northing
-	}
-	if math.Abs(area) < 1e-9 {
-		return true
-	}
-	for i := range ids {
-		a, b := p.Points[ids[i]], p.Points[ids[(i+1)%len(ids)]]
-		for j := i + 1; j < len(ids); j++ {
-			if j == i+1 || i == 0 && j == len(ids)-1 {
-				continue
-			}
-			c, d := p.Points[ids[j]], p.Points[ids[(j+1)%len(ids)]]
-			if segmentsCross(a, b, c, d) {
-				return true
-			}
-		}
-	}
-	return false
-}
-
-func segmentsCross(a, b, c, d geom.Point) bool {
-	orient := func(p, q, r geom.Point) float64 {
-		return (q.Easting-p.Easting)*(r.Northing-p.Northing) - (q.Northing-p.Northing)*(r.Easting-p.Easting)
-	}
-	onSegment := func(p, q, r geom.Point) bool {
-		return q.Easting >= math.Min(p.Easting, r.Easting)-1e-9 && q.Easting <= math.Max(p.Easting, r.Easting)+1e-9 &&
-			q.Northing >= math.Min(p.Northing, r.Northing)-1e-9 && q.Northing <= math.Max(p.Northing, r.Northing)+1e-9
-	}
-	o1, o2, o3, o4 := orient(a, b, c), orient(a, b, d), orient(c, d, a), orient(c, d, b)
-	if math.Abs(o1) <= 1e-9 && onSegment(a, c, b) || math.Abs(o2) <= 1e-9 && onSegment(a, d, b) ||
-		math.Abs(o3) <= 1e-9 && onSegment(c, a, d) || math.Abs(o4) <= 1e-9 && onSegment(c, b, d) {
-		return true
-	}
-	return (o1 > 0) != (o2 > 0) && (o3 > 0) != (o4 > 0)
+	return validate.Feature(
+		feature,
+		func(id string) (geom.Point, bool) {
+			pt, ok := p.Points[id]
+			return pt, ok
+		},
+		func(id string) bool {
+			_, ok := p.Groups[id]
+			return ok
+		},
+	)
 }
 
 func requireGroup(p *project.Project, id string) error {

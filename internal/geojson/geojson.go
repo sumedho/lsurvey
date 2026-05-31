@@ -4,13 +4,13 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"math"
 	"os"
 	"strconv"
 	"strings"
 
 	"lsurvey/internal/geom"
 	"lsurvey/internal/project"
+	"lsurvey/internal/validate"
 )
 
 type featureCollection struct {
@@ -255,49 +255,23 @@ func importGroup(state *importState, props map[string]any) (string, error) {
 }
 
 func validateImportedFeature(state *importState, item project.Feature) error {
-	if item.Kind != project.FeaturePolygon && item.TerrainRole != "" && item.TerrainRole != "standard" && item.TerrainRole != "ridge" && item.TerrainRole != "drain" {
+	if item.Kind != project.FeaturePolygon && item.TerrainRole != "" && (item.TerrainRole == "none" || !validate.ValidTerrainRole(item.TerrainRole)) {
 		return fmt.Errorf("invalid terrain_role %q", item.TerrainRole)
 	}
 	if item.Kind != project.FeaturePolygon {
 		return nil
 	}
-	area := 0.0
-	for i := range item.PointIDs {
-		a, b := state.points[item.PointIDs[i]], state.points[item.PointIDs[(i+1)%len(item.PointIDs)]]
-		area += a.Easting*b.Northing - b.Easting*a.Northing
+	points := make([]geom.Point, 0, len(item.PointIDs))
+	for _, id := range item.PointIDs {
+		points = append(points, state.points[id])
 	}
-	if math.Abs(area) <= 1e-9 {
+	if validate.PolygonZeroArea(points) {
 		return fmt.Errorf("polygon %q is zero-area", item.ID)
 	}
-	for i := range item.PointIDs {
-		a, b := state.points[item.PointIDs[i]], state.points[item.PointIDs[(i+1)%len(item.PointIDs)]]
-		for j := i + 1; j < len(item.PointIDs); j++ {
-			if j == i+1 || i == 0 && j == len(item.PointIDs)-1 {
-				continue
-			}
-			c, d := state.points[item.PointIDs[j]], state.points[item.PointIDs[(j+1)%len(item.PointIDs)]]
-			if geometrySegmentsCross(a, b, c, d) {
-				return fmt.Errorf("polygon %q self-intersects", item.ID)
-			}
-		}
+	if validate.PolygonSelfIntersects(points) {
+		return fmt.Errorf("polygon %q self-intersects", item.ID)
 	}
 	return nil
-}
-
-func geometrySegmentsCross(a, b, c, d geom.Point) bool {
-	orient := func(p, q, r geom.Point) float64 {
-		return (q.Easting-p.Easting)*(r.Northing-p.Northing) - (q.Northing-p.Northing)*(r.Easting-p.Easting)
-	}
-	onSegment := func(p, q, r geom.Point) bool {
-		return q.Easting >= math.Min(p.Easting, r.Easting)-1e-9 && q.Easting <= math.Max(p.Easting, r.Easting)+1e-9 &&
-			q.Northing >= math.Min(p.Northing, r.Northing)-1e-9 && q.Northing <= math.Max(p.Northing, r.Northing)+1e-9
-	}
-	o1, o2, o3, o4 := orient(a, b, c), orient(a, b, d), orient(c, d, a), orient(c, d, b)
-	if math.Abs(o1) <= 1e-9 && onSegment(a, c, b) || math.Abs(o2) <= 1e-9 && onSegment(a, d, b) ||
-		math.Abs(o3) <= 1e-9 && onSegment(c, a, d) || math.Abs(o4) <= 1e-9 && onSegment(c, b, d) {
-		return true
-	}
-	return (o1 > 0) != (o2 > 0) && (o3 > 0) != (o4 > 0)
 }
 
 func pointCoordinate(pt geom.Point) []float64 {
