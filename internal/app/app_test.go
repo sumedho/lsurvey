@@ -142,6 +142,17 @@ func TestSessionFailedCommandDoesNotRecordHistory(t *testing.T) {
 	}
 }
 
+func TestSessionSeparatesLifecycleAndCOGORouting(t *testing.T) {
+	s := NewSession(project.New("test"), "", "v1")
+	outcome, err := s.Execute("desc inverse missing other")
+	if err != nil || !outcome.ProjectChanged || s.Project.Description != "inverse missing other" {
+		t.Fatalf("lifecycle desc outcome=%+v description=%q err=%v", outcome, s.Project.Description, err)
+	}
+	if _, err := s.Execute("definitely-unknown"); err == nil || !strings.Contains(err.Error(), `unknown command "definitely-unknown"`) {
+		t.Fatalf("unknown command should fall through to cogo: %v", err)
+	}
+}
+
 func TestSessionUndoRedoRestoresDataAndAppendsAudit(t *testing.T) {
 	s := NewSession(project.New("test"), "", "v1")
 	if _, err := s.Execute("pt add 1 100 200 PEG"); err != nil {

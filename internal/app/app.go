@@ -73,183 +73,38 @@ func (s *Session) Execute(command string) (Outcome, error) {
 	if len(fields) == 0 {
 		return Outcome{}, fmt.Errorf("empty command")
 	}
-	var outcome Outcome
-	switch fields[0] {
-	case "new":
-		name := "untitled"
-		if len(fields) > 1 {
-			name = strings.Join(fields[1:], " ")
-		}
-		s.Project = project.New(name)
-		s.Path = ""
-		s.Dirty = false
-		s.clearNavigation()
-		outcome.Message = "new project: " + name
-		outcome.ProjectReplaced = true
-	case "open":
-		if len(fields) != 2 {
-			return Outcome{}, fmt.Errorf("usage: open <file>")
-		}
-		path := paths.Project(fields[1])
-		loaded, err := project.Load(path)
+	lifecycle := sessionLifecycle{s: s}
+	if outcome, handled, err := lifecycle.TryExecute(command, fields); handled || err != nil {
 		if err != nil {
 			return Outcome{}, err
 		}
-		s.Project = loaded
-		s.Path = path
-		s.Dirty = false
-		s.clearNavigation()
-		outcome.Message = "opened " + s.Path
-		outcome.ProjectReplaced = true
-	case "save":
-		path := s.Path
-		if len(fields) > 2 {
-			return Outcome{}, fmt.Errorf("usage: save [file]")
-		}
-		if len(fields) == 2 {
-			path = paths.Project(fields[1])
-		}
-		if path == "" {
-			return Outcome{}, fmt.Errorf("usage: save <file>")
-		}
-		path = paths.Project(path)
-		s.Project.AppVersion = s.Version
-		if err := project.Save(path, s.Project); err != nil {
-			return Outcome{}, err
-		}
-		s.Path = path
-		s.Dirty = false
-		outcome.Message = "saved " + s.Path
-	case "saveas":
-		if len(fields) != 2 {
-			return Outcome{}, fmt.Errorf("usage: saveas <file>")
-		}
-		path := paths.Project(fields[1])
-		s.Project.AppVersion = s.Version
-		if err := project.Save(path, s.Project); err != nil {
-			return Outcome{}, err
-		}
-		s.Path = path
-		s.Dirty = false
-		outcome.Message = "saved " + s.Path
-	case "export":
-		if len(fields) < 3 {
-			return Outcome{}, fmt.Errorf("usage: export dxf|csv|geojson|landxml|boundarycsv|codes <file> [polygon=<id>]")
-		}
-		path, err := Export(s.Project, fields[1], fields[2], fields[3:]...)
-		if err != nil {
-			return Outcome{}, err
-		}
-		outcome.Message = "exported " + path + coordinateSuffix(s.Project)
-	case "undo":
-		if len(fields) != 1 {
-			return Outcome{}, fmt.Errorf("usage: undo")
-		}
-		return s.undoEdit()
-	case "redo":
-		if len(fields) != 1 {
-			return Outcome{}, fmt.Errorf("usage: redo")
-		}
-		return s.redoEdit()
-	case "history":
-		message, err := s.historyReport(fields)
-		if err != nil {
-			return Outcome{}, err
-		}
-		outcome.Message = message
-	case "info":
-		if len(fields) != 1 {
-			return Outcome{}, fmt.Errorf("usage: info")
-		}
-		outcome.Message = s.projectInfo()
-	case "import":
-		if len(fields) != 3 {
-			return Outcome{}, fmt.Errorf("usage: import csv|geojson|codes <file>")
-		}
-		before, err := cloneProject(s.Project)
-		if err != nil {
-			return Outcome{}, err
-		}
-		switch fields[1] {
-		case "csv":
-			path := paths.CSV(fields[2])
-			count, err := csvpoints.ImportFile(path, s.Project)
-			if err != nil {
-				return Outcome{}, err
-			}
-			outcome.Message = fmt.Sprintf("imported %d points from %s", count, path)
-		case "geojson":
-			path := paths.GeoJSON(fields[2])
-			points, lines, err := geojson.ImportFile(path, s.Project)
-			if err != nil {
-				return Outcome{}, err
-			}
-			outcome.Message = fmt.Sprintf("imported %d points and %d features from %s", points, lines, path)
-		case "codes":
-			path := paths.Codes(fields[2])
-			groups, mappings, err := codelib.ImportFile(path, s.Project)
-			if err != nil {
-				return Outcome{}, err
-			}
-			outcome.Message = fmt.Sprintf("imported %d groups and %d point code styles from %s", groups, mappings, path)
-		default:
-			return Outcome{}, fmt.Errorf("usage: import csv|geojson|codes <file>")
-		}
-		if err := s.commitMutation(before, command, outcome.Message, nil, nil); err != nil {
-			return Outcome{}, err
-		}
-		outcome.ProjectChanged = true
-	case "desc":
-		description := strings.TrimSpace(strings.TrimPrefix(command, "desc"))
-		if description == "" {
-			return Outcome{}, fmt.Errorf("usage: desc <project description>")
-		}
-		before, err := cloneProject(s.Project)
-		if err != nil {
-			return Outcome{}, err
-		}
-		s.Project.Description = description
-		outcome.Message = "project description updated"
-		if err := s.commitMutation(before, command, outcome.Message, nil, nil); err != nil {
-			return Outcome{}, err
-		}
-		outcome.ProjectChanged = true
-	case "precision":
-		if len(fields) != 2 {
-			return Outcome{}, fmt.Errorf("usage: precision <0-6>")
-		}
-		precision, err := strconv.Atoi(fields[1])
-		if err != nil || precision < 0 || precision > 6 {
-			return Outcome{}, fmt.Errorf("precision must be a number from 0 to 6")
-		}
-		before, err := cloneProject(s.Project)
-		if err != nil {
-			return Outcome{}, err
-		}
-		s.Project.SetDisplayPrecision(precision)
-		outcome.Message = fmt.Sprintf("display precision set to %d", precision)
-		if err := s.commitMutation(before, command, outcome.Message, nil, nil); err != nil {
-			return Outcome{}, err
-		}
-		outcome.ProjectChanged = true
-	default:
-		before, err := cloneProject(s.Project)
-		if err != nil {
-			return Outcome{}, err
-		}
-		result, err := cogo.Execute(s.Project, command)
-		if err != nil {
-			return Outcome{}, err
-		}
-		outcome.Message = result.Message
-		if result.Changed {
-			if err := s.commitMutation(before, command, result.Message, result.Created, result.Updated); err != nil {
-				return Outcome{}, err
-			}
-			outcome.ProjectChanged = true
-		}
+		outcome.CoordinateLabel = s.Project.CoordinateLabel()
+		return outcome, nil
+	}
+	outcome, err := s.executeCOGOCommand(command)
+	if err != nil {
+		return Outcome{}, err
 	}
 	outcome.CoordinateLabel = s.Project.CoordinateLabel()
+	return outcome, nil
+}
+
+func (s *Session) executeCOGOCommand(command string) (Outcome, error) {
+	before, err := cloneProject(s.Project)
+	if err != nil {
+		return Outcome{}, err
+	}
+	result, err := cogo.Execute(s.Project, command)
+	if err != nil {
+		return Outcome{}, err
+	}
+	outcome := Outcome{Message: result.Message}
+	if result.Changed {
+		if err := s.commitMutation(before, command, result.Message, result.Created, result.Updated); err != nil {
+			return Outcome{}, err
+		}
+		outcome.ProjectChanged = true
+	}
 	return outcome, nil
 }
 
