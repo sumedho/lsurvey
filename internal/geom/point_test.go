@@ -71,6 +71,120 @@ func TestCloseRejectsTooFewPoints(t *testing.T) {
 	}
 }
 
+func TestCloseCollinearPointsProducesZeroArea(t *testing.T) {
+	got, ok := Close([]Point{
+		{Easting: 0, Northing: 0},
+		{Easting: 5, Northing: 0},
+		{Easting: 10, Northing: 0},
+	})
+	if !ok {
+		t.Fatal("expected close result for collinear points")
+	}
+	assertClose(t, got.Area, 0)
+	assertClose(t, got.Perimeter, 20)
+}
+
+func TestCloseThreeCoincidentPoints(t *testing.T) {
+	got, ok := Close([]Point{
+		{Easting: 5, Northing: 5},
+		{Easting: 5, Northing: 5},
+		{Easting: 5, Northing: 5},
+	})
+	if !ok {
+		t.Fatal("expected close result for coincident points")
+	}
+	assertClose(t, got.Area, 0)
+	assertClose(t, got.Perimeter, 0)
+}
+
+func TestCloseSelfIntersectingBowtie(t *testing.T) {
+	got, ok := Close([]Point{
+		{Easting: 0, Northing: 0},
+		{Easting: 10, Northing: 10},
+		{Easting: 0, Northing: 10},
+		{Easting: 10, Northing: 0},
+	})
+	if !ok {
+		t.Fatal("expected close result for self-intersecting polygon")
+	}
+	// Shoelace signed area cancels to zero for a bowtie; Abs(0)/2 = 0
+	assertClose(t, got.Area, 0)
+	// sqrt(200) + 10 + sqrt(200) + 10 = 48.284271...
+	assertClose(t, got.Perimeter, 2*math.Sqrt(200)+20)
+}
+
+func TestCloseClockwiseVsCounterClockwise(t *testing.T) {
+	cw, ok := Close([]Point{
+		{Easting: 0, Northing: 0},
+		{Easting: 0, Northing: 10},
+		{Easting: 10, Northing: 10},
+		{Easting: 10, Northing: 0},
+	})
+	if !ok {
+		t.Fatal("expected close result for clockwise polygon")
+	}
+	ccw, ok := Close([]Point{
+		{Easting: 0, Northing: 0},
+		{Easting: 10, Northing: 0},
+		{Easting: 10, Northing: 10},
+		{Easting: 0, Northing: 10},
+	})
+	if !ok {
+		t.Fatal("expected close result for counter-clockwise polygon")
+	}
+	assertClose(t, cw.Area, 100)
+	assertClose(t, ccw.Area, 100)
+	assertClose(t, cw.Perimeter, 40)
+	assertClose(t, ccw.Perimeter, 40)
+}
+
+func TestCloseFourPointRectangle(t *testing.T) {
+	got, ok := Close([]Point{
+		{Easting: 0, Northing: 0},
+		{Easting: 6, Northing: 0},
+		{Easting: 6, Northing: 4},
+		{Easting: 0, Northing: 4},
+	})
+	if !ok {
+		t.Fatal("expected close result for rectangle")
+	}
+	assertClose(t, got.Area, 24)
+	assertClose(t, got.Perimeter, 20)
+	// Misclose is the distance from last point back to first (0,4)→(0,0) = 4
+	assertClose(t, got.Misclose.HorizontalDistance, 4)
+}
+
+func TestCloseWithRedundantClosingPoint(t *testing.T) {
+	// Last point equals first point — zero-length return edge included in perimeter
+	got, ok := Close([]Point{
+		{Easting: 0, Northing: 0},
+		{Easting: 5, Northing: 0},
+		{Easting: 5, Northing: 3},
+		{Easting: 0, Northing: 0},
+	})
+	if !ok {
+		t.Fatal("expected close result with redundant closing point")
+	}
+	assertClose(t, got.Area, 7.5)
+	// 5 + 3 + sqrt(34) + 0 = 13.830952...
+	assertClose(t, got.Perimeter, 5+3+math.Sqrt(34))
+}
+
+func TestCloseWithTwoConsecutiveIdenticalPoints(t *testing.T) {
+	// Two consecutive points at same location — zero-length edge
+	got, ok := Close([]Point{
+		{Easting: 0, Northing: 0},
+		{Easting: 0, Northing: 0},
+		{Easting: 4, Northing: 0},
+		{Easting: 4, Northing: 3},
+	})
+	if !ok {
+		t.Fatal("expected close result with duplicate consecutive points")
+	}
+	assertClose(t, got.Area, 6)
+	assertClose(t, got.Perimeter, 12)
+}
+
 func TestRadiateStoresCode(t *testing.T) {
 	from := Point{Northing: 0, Easting: 0}
 	got := Radiate(from, AngleFromDegrees(90), 10, nil, "2", "PEG")
