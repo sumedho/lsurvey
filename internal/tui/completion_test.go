@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 
@@ -46,6 +47,44 @@ func TestCommandCompletionCachesProjectSuggestionsUntilInvalidated(t *testing.T)
 	m.refreshCompletions()
 	if !hasSuggestion(m.completionSuggestions, "line gen UNIQUECODE") {
 		t.Fatal("expected point suggestions after invalidating completion cache")
+	}
+}
+
+func TestCommandCompletionDoesNotCachePerPointTemplates(t *testing.T) {
+	empty := project.New("empty")
+	large := project.New("large")
+	for i := 1; i <= 1000; i++ {
+		id := fmt.Sprintf("%04d", i)
+		large.Points[id] = geom.Point{ID: id, Easting: float64(i), Northing: float64(i)}
+	}
+
+	emptyCount := len(commandSuggestions(empty))
+	largeSuggestions := commandSuggestions(large)
+	if len(largeSuggestions) > emptyCount+5 {
+		t.Fatalf("large project cached %d suggestions, empty cached %d", len(largeSuggestions), emptyCount)
+	}
+	for _, suggestion := range largeSuggestions {
+		if strings.HasPrefix(suggestion, "rad 0001 ") || strings.HasPrefix(suggestion, "inverse 0001 ") {
+			t.Fatalf("cached per-point suggestion %q", suggestion)
+		}
+	}
+}
+
+func TestCommandCompletionBuildsDynamicPointSuggestionForLargeProject(t *testing.T) {
+	p := project.New("large")
+	for i := 1; i <= 1000; i++ {
+		id := fmt.Sprintf("%04d", i)
+		p.Points[id] = geom.Point{ID: id, Easting: float64(i), Northing: float64(i)}
+	}
+	m := NewModel(p, "")
+	m.input.SetValue("rad 0001")
+	m.refreshCompletions()
+	matches := m.input.MatchedSuggestions()
+	if len(matches) == 0 || !strings.HasPrefix(matches[0], "rad 0001 ") {
+		t.Fatalf("dynamic rad suggestion=%v", matches)
+	}
+	if hasSuggestion(m.completionSuggestions, matches[0]) {
+		t.Fatalf("dynamic suggestion should not be cached: %q", matches[0])
 	}
 }
 

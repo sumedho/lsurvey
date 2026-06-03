@@ -36,24 +36,6 @@ func commandSuggestions(p *project.Project) []string {
 			add("line gen " + pt.Code)
 			codes[pt.Code] = true
 		}
-		add("close " + pt.ID + " <p2> <p3> ...")
-		add("inverse " + pt.ID + " <to>")
-		add("rad " + pt.ID + " <azimuth|bearing> <distance> [vdiff <delta>] as " + nextPointID + " [code]")
-		add("rad3d " + pt.ID + " <azimuth|bearing> <slope_distance> <zenith> as " + nextPointID + " [code]")
-		add("midpoint " + pt.ID + " <p2> as " + nextPointID + " [code]")
-		add("offset " + pt.ID + " <p2> <offset> <chainage> as " + nextPointID + " [code]")
-		add("shift " + pt.ID + " east=<coordinate> [north=<coordinate>] [elev=<coordinate>]")
-		add("rotate " + pt.ID + " <bearing>")
-		add("scale apply " + pt.ID + " csf=<factor> [system=<label>]")
-		add("transform fit " + pt.ID + " <dst1> <src2> <dst2> [<srcN> <dstN> ...]")
-		add("line intersect " + pt.ID + " <a2> <b1> <b2> as " + nextPointID + " [code]")
-		add("intersect bearing-bearing " + pt.ID + " <brg1> <p2> <brg2> as " + nextPointID + " [code]")
-		add("intersect bearing-distance " + pt.ID + " <brg> <p2> <dist> choose near|far as " + nextPointID + " [code]")
-		add("intersect distance-distance " + pt.ID + " <dist1> <p2> <dist2> choose left|right as " + nextPointID + " [code]")
-		add("resect " + pt.ID + " <brg1> <p2> <brg2> <p3> <brg3> as " + nextPointID + " [code]")
-		add("pt edit " + pt.ID + " ")
-		add("pt del " + pt.ID)
-		add("pt rename " + pt.ID + " " + nextPointID)
 	}
 
 	lines := p.SortedFeatures()
@@ -96,11 +78,14 @@ func commandSuggestions(p *project.Project) []string {
 }
 
 func commandSuggestionsForInput(p *project.Project, value string) []string {
-	return commandSuggestionsForInputTemplates(commandSuggestions(p), value)
+	return commandSuggestionsForInputTemplates(p, commandSuggestions(p), value)
 }
 
-func commandSuggestionsForInputTemplates(suggestions []string, value string) []string {
+func commandSuggestionsForInputTemplates(p *project.Project, suggestions []string, value string) []string {
 	contextual := contextualSuggestion(value, suggestions)
+	if pointContextual := contextualPointSuggestion(p, value); pointContextual != "" {
+		contextual = pointContextual
+	}
 	if contextual == "" {
 		return suggestions
 	}
@@ -111,6 +96,113 @@ func commandSuggestionsForInputTemplates(suggestions []string, value string) []s
 		}
 	}
 	return out
+}
+
+type pointCompletionTemplate struct {
+	prefix []string
+	suffix []string
+}
+
+func contextualPointSuggestion(p *project.Project, value string) string {
+	if p == nil || strings.TrimSpace(value) == "" {
+		return ""
+	}
+	fields := strings.Fields(value)
+	if len(fields) == 0 {
+		return ""
+	}
+	trailingSpace := hasTrailingSpace(value)
+	nextPointID := p.NextPointID()
+	templates := []pointCompletionTemplate{
+		{prefix: []string{"close"}, suffix: []string{"<p2>", "<p3>", "..."}},
+		{prefix: []string{"inverse"}, suffix: []string{"<to>"}},
+		{prefix: []string{"rad"}, suffix: []string{"<azimuth|bearing>", "<distance>", "[vdiff", "<delta>]", "as", nextPointID, "[code]"}},
+		{prefix: []string{"rad3d"}, suffix: []string{"<azimuth|bearing>", "<slope_distance>", "<zenith>", "as", nextPointID, "[code]"}},
+		{prefix: []string{"midpoint"}, suffix: []string{"<p2>", "as", nextPointID, "[code]"}},
+		{prefix: []string{"offset"}, suffix: []string{"<p2>", "<offset>", "<chainage>", "as", nextPointID, "[code]"}},
+		{prefix: []string{"shift"}, suffix: []string{"east=<coordinate>", "[north=<coordinate>]", "[elev=<coordinate>]"}},
+		{prefix: []string{"rotate"}, suffix: []string{"<bearing>"}},
+		{prefix: []string{"scale", "apply"}, suffix: []string{"csf=<factor>", "[system=<label>]"}},
+		{prefix: []string{"transform", "fit"}, suffix: []string{"<dst1>", "<src2>", "<dst2>", "[<srcN>", "<dstN>", "...]"}},
+		{prefix: []string{"line", "intersect"}, suffix: []string{"<a2>", "<b1>", "<b2>", "as", nextPointID, "[code]"}},
+		{prefix: []string{"intersect", "bearing-bearing"}, suffix: []string{"<brg1>", "<p2>", "<brg2>", "as", nextPointID, "[code]"}},
+		{prefix: []string{"intersect", "bearing-distance"}, suffix: []string{"<brg>", "<p2>", "<dist>", "choose", "near|far", "as", nextPointID, "[code]"}},
+		{prefix: []string{"intersect", "distance-distance"}, suffix: []string{"<dist1>", "<p2>", "<dist2>", "choose", "left|right", "as", nextPointID, "[code]"}},
+		{prefix: []string{"resect"}, suffix: []string{"<brg1>", "<p2>", "<brg2>", "<p3>", "<brg3>", "as", nextPointID, "[code]"}},
+		{prefix: []string{"pt", "edit"}, suffix: nil},
+		{prefix: []string{"pt", "del"}, suffix: nil},
+		{prefix: []string{"pt", "rename"}, suffix: []string{nextPointID}},
+	}
+	for _, template := range templates {
+		suggestion := pointSuggestionForTemplate(p, value, fields, trailingSpace, template)
+		if suggestion != "" {
+			return suggestion
+		}
+	}
+	return ""
+}
+
+func pointSuggestionForTemplate(p *project.Project, value string, fields []string, trailingSpace bool, template pointCompletionTemplate) string {
+	pointIndex := len(template.prefix)
+	if !pointCompletionPrefixMatches(fields, trailingSpace, template.prefix) || !pointCompletionReachedPoint(fields, trailingSpace, pointIndex) {
+		return ""
+	}
+	pointQuery := ""
+	if len(fields) > pointIndex {
+		pointQuery = fields[pointIndex]
+	}
+	pointID := matchingPointID(p, pointQuery)
+	if pointID == "" {
+		return ""
+	}
+	parts := make([]string, 0, len(template.prefix)+1+len(template.suffix))
+	parts = append(parts, template.prefix...)
+	parts = append(parts, pointID)
+	parts = append(parts, template.suffix...)
+	suggestion := strings.Join(parts, " ")
+	if len(template.suffix) == 0 {
+		suggestion += " "
+	}
+	if completed, ok := fillTemplatePrefix(value, suggestion); ok {
+		return completed
+	}
+	if strings.HasPrefix(strings.ToLower(suggestion), strings.ToLower(value)) {
+		return suggestion
+	}
+	return ""
+}
+
+func pointCompletionPrefixMatches(fields []string, trailingSpace bool, prefix []string) bool {
+	for i, want := range prefix {
+		if i >= len(fields) {
+			return false
+		}
+		if i == len(fields)-1 && !trailingSpace {
+			return strings.HasPrefix(strings.ToLower(want), strings.ToLower(fields[i]))
+		}
+		if !strings.EqualFold(fields[i], want) {
+			return false
+		}
+	}
+	return true
+}
+
+func pointCompletionReachedPoint(fields []string, trailingSpace bool, pointIndex int) bool {
+	return len(fields) > pointIndex || len(fields) == pointIndex && trailingSpace
+}
+
+func matchingPointID(p *project.Project, query string) string {
+	if query != "" {
+		if _, ok := p.Points[query]; ok {
+			return query
+		}
+	}
+	for _, pt := range p.SortedPoints() {
+		if query == "" || strings.HasPrefix(strings.ToLower(pt.ID), strings.ToLower(query)) {
+			return pt.ID
+		}
+	}
+	return ""
 }
 
 func (m *Model) completeNextInput() bool {
@@ -170,6 +262,11 @@ func leadingSpaces(value []rune) []rune {
 	return value[:i]
 }
 
+func hasTrailingSpace(value string) bool {
+	runes := []rune(value)
+	return len(runes) > 0 && unicode.IsSpace(runes[len(runes)-1])
+}
+
 func contextualSuggestion(value string, templates []string) string {
 	if strings.TrimSpace(value) == "" {
 		return ""
@@ -188,7 +285,7 @@ func fillTemplatePrefix(value, template string) (string, bool) {
 	if len(valueFields) == 0 || len(valueFields) > len(templateFields) {
 		return "", false
 	}
-	trailingSpace := len(value) > 0 && unicode.IsSpace([]rune(value)[len([]rune(value))-1])
+	trailingSpace := hasTrailingSpace(value)
 	out := make([]string, 0, len(templateFields))
 	for i, valueField := range valueFields {
 		templateField := templateFields[i]

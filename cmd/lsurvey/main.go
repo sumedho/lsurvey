@@ -20,7 +20,10 @@ func main() {
 }
 
 func run(args []string) error {
-	if len(args) >= 4 && args[0] == "export" {
+	if len(args) > 0 && args[0] == "export" {
+		if len(args) < 4 {
+			return fmt.Errorf("usage: export dxf|csv|geojson|landxml|boundarycsv|codes <project.srv> <file> [polygon=<id>]")
+		}
 		return app.ExportProject(args[1], args[2], args[3], args[4:]...)
 	}
 

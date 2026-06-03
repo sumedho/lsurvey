@@ -917,7 +917,7 @@ func (m *Model) refreshCompletions() {
 		m.completionSuggestions = commandSuggestions(m.project)
 		m.completionDirty = false
 	}
-	m.input.SetSuggestions(commandSuggestionsForInputTemplates(m.completionSuggestions, m.input.Value()))
+	m.input.SetSuggestions(commandSuggestionsForInputTemplates(m.project, m.completionSuggestions, m.input.Value()))
 }
 
 func (m *Model) invalidateCompletions() {

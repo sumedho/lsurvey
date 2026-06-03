@@ -55,7 +55,7 @@ func PolygonSelfIntersects(points []geom.Point) bool {
 	for i := range points {
 		a, b := points[i], points[(i+1)%len(points)]
 		for j := i + 1; j < len(points); j++ {
-			if j == i+1 || i == 0 && j == len(points)-1 {
+			if polygonSegmentsAdjacent(i, j, len(points)) {
 				continue
 			}
 			c, d := points[j], points[(j+1)%len(points)]
@@ -65,6 +65,10 @@ func PolygonSelfIntersects(points []geom.Point) bool {
 		}
 	}
 	return false
+}
+
+func polygonSegmentsAdjacent(i, j, n int) bool {
+	return i == j || (i+1)%n == j || (j+1)%n == i
 }
 
 func SegmentsCross(a, b, c, d geom.Point) bool {

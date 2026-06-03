@@ -27,6 +27,20 @@ func TestPolygonInvalidAcceptsSimplePolygon(t *testing.T) {
 	}
 }
 
+func TestPolygonSelfIntersectsSkipsClosingEdgeAdjacency(t *testing.T) {
+	points := []geom.Point{{Easting: 0, Northing: 0}, {Easting: 10, Northing: 0}, {Easting: 10, Northing: 10}, {Easting: 0, Northing: 10}}
+	if PolygonSelfIntersects(points) {
+		t.Fatal("expected closing edge adjacency to be valid")
+	}
+}
+
+func TestPolygonSelfIntersectsDetectsClosingEdgeCrossing(t *testing.T) {
+	points := []geom.Point{{Easting: 0, Northing: 0}, {Easting: 10, Northing: 0}, {Easting: 0, Northing: 10}, {Easting: 10, Northing: 10}}
+	if !PolygonSelfIntersects(points) {
+		t.Fatal("expected closing edge crossing to be invalid")
+	}
+}
+
 func TestSegmentsCrossIncludesCollinearOverlap(t *testing.T) {
 	a := geom.Point{Easting: 0, Northing: 0}
 	b := geom.Point{Easting: 10, Northing: 0}

@@ -1,6 +1,39 @@
 package main
 
-import "testing"
+import (
+	"os"
+	"path/filepath"
+	"strings"
+	"testing"
+
+	"lsurvey/internal/project"
+)
+
+func TestRunBatchExportRequiresOutputPath(t *testing.T) {
+	err := run([]string{"export", "dxf", "job.srv"})
+	if err == nil {
+		t.Fatal("expected usage error")
+	}
+	if !strings.Contains(err.Error(), "usage: export") {
+		t.Fatalf("error=%q, want usage error", err)
+	}
+}
+
+func TestRunBatchExportCSV(t *testing.T) {
+	dir := t.TempDir()
+	projectPath := filepath.Join(dir, "job.srv")
+	outputPath := filepath.Join(dir, "points")
+	if err := project.Save(projectPath, project.New("job")); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := run([]string{"export", "csv", projectPath, outputPath}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(outputPath + ".csv"); err != nil {
+		t.Fatal(err)
+	}
+}
 
 func TestResolveVersionUsesInjectedValue(t *testing.T) {
 	original := version
