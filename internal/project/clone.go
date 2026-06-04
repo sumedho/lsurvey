@@ -82,6 +82,7 @@ func cloneContourPolyline(polyline ContourPolyline) ContourPolyline {
 func cloneHistoryRecord(record HistoryRecord) HistoryRecord {
 	record.Created = cloneSlice(record.Created, cloneString)
 	record.Updated = cloneSlice(record.Updated, cloneString)
+	record.Deleted = cloneSlice(record.Deleted, cloneString)
 	record.Extra = cloneRawMessage(record.Extra)
 	return record
 }

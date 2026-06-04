@@ -182,6 +182,30 @@ func TestSessionUndoRedoRestoresDataAndAppendsAudit(t *testing.T) {
 	}
 }
 
+func TestSessionDeleteRecordsDeletedAudit(t *testing.T) {
+	s := NewSession(project.New("test"), "", "v1")
+	if _, err := s.Execute("pt add 1 100 200 PEG"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.Execute("pt del 1"); err != nil {
+		t.Fatal(err)
+	}
+	record := s.Project.History[1]
+	if len(record.Deleted) != 1 || record.Deleted[0] != "point:1" {
+		t.Fatalf("deleted=%v want point:1", record.Deleted)
+	}
+	if len(record.Updated) != 0 {
+		t.Fatalf("updated=%v want none", record.Updated)
+	}
+	got, err := s.Execute("history info 2")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(got.Message, "deleted=point:1") || strings.Contains(got.Message, "updated=point:1") {
+		t.Fatalf("history detail=%q", got.Message)
+	}
+}
+
 func TestSessionUndoLifecycleAndRedoInvalidation(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "job")

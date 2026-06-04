@@ -115,6 +115,7 @@ type HistoryRecord struct {
 	Result  string          `json:"result,omitempty"`
 	Created []string        `json:"created,omitempty"`
 	Updated []string        `json:"updated,omitempty"`
+	Deleted []string        `json:"deleted,omitempty"`
 	Error   string          `json:"error,omitempty"`
 	Extra   json.RawMessage `json:"extra,omitempty"`
 }
@@ -216,11 +217,11 @@ func Save(path string, p *Project) error {
 }
 
 func (p *Project) AddHistory(command, result string, created []string, err error) {
-	p.AddHistoryChange(command, result, created, nil, nil, err)
+	p.AddHistoryChange(command, result, created, nil, nil, nil, err)
 }
 
-func (p *Project) AddHistoryChange(command, result string, created, updated []string, extra any, err error) {
-	r := HistoryRecord{At: time.Now().UTC(), Command: command, Result: result, Created: created, Updated: updated}
+func (p *Project) AddHistoryChange(command, result string, created, updated, deleted []string, extra any, err error) {
+	r := HistoryRecord{At: time.Now().UTC(), Command: command, Result: result, Created: created, Updated: updated, Deleted: deleted}
 	if extra != nil {
 		data, marshalErr := json.Marshal(extra)
 		if marshalErr == nil {

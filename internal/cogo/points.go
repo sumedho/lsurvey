@@ -126,7 +126,7 @@ func execPoint(p *project.Project, f []string) (Result, error) {
 			}
 		}
 		delete(p.Points, id)
-		return staleContours(Result{Message: "deleted point " + id, Updated: []string{"point:" + id}}, "point geometry changed"), nil
+		return staleContours(Result{Message: "deleted point " + id, Deleted: []string{"point:" + id}}, "point geometry changed"), nil
 	case "rename":
 		if len(f) != 4 {
 			return Result{}, fmt.Errorf("usage: pt rename <old> <new>")

@@ -751,6 +751,113 @@ func TestPointDeleteRejectsMissingAndReferencedPoint(t *testing.T) {
 	}
 }
 
+func TestDeleteCommandsReportDeletedObjects(t *testing.T) {
+	tests := []struct {
+		name     string
+		setup    []string
+		command  string
+		deleted  string
+		validate func(*testing.T, *project.Project)
+	}{
+		{
+			name:    "point",
+			setup:   []string{"pt add 1 0 0"},
+			command: "pt del 1",
+			deleted: "point:1",
+			validate: func(t *testing.T, p *project.Project) {
+				if _, ok := p.Points["1"]; ok {
+					t.Fatal("point still exists")
+				}
+			},
+		},
+		{
+			name:    "line",
+			setup:   []string{"pt add 1 0 0", "pt add 2 10 0", "line add L1 1 2"},
+			command: "line del L1",
+			deleted: "line:L1",
+			validate: func(t *testing.T, p *project.Project) {
+				if _, ok := p.Features["L1"]; ok {
+					t.Fatal("line still exists")
+				}
+			},
+		},
+		{
+			name:    "polyline",
+			setup:   []string{"pt add 1 0 0", "pt add 2 10 0", "polyline add K1 1 2"},
+			command: "polyline del K1",
+			deleted: "polyline:K1",
+			validate: func(t *testing.T, p *project.Project) {
+				if _, ok := p.Features["K1"]; ok {
+					t.Fatal("polyline still exists")
+				}
+			},
+		},
+		{
+			name:    "polygon",
+			setup:   []string{"pt add 1 0 0", "pt add 2 10 0", "pt add 3 0 10", "polygon add LOT1 1 2 3"},
+			command: "polygon del LOT1",
+			deleted: "polygon:LOT1",
+			validate: func(t *testing.T, p *project.Project) {
+				if _, ok := p.Features["LOT1"]; ok {
+					t.Fatal("polygon still exists")
+				}
+			},
+		},
+		{
+			name:    "contour",
+			setup:   []string{"pt add 1 0 0 0", "pt add 2 10 0 10", "pt add 3 0 10 10", "contour gen C1 5 breaklines=none"},
+			command: "contour del C1",
+			deleted: "contour:C1",
+			validate: func(t *testing.T, p *project.Project) {
+				if _, ok := p.ContourSets["C1"]; ok {
+					t.Fatal("contour still exists")
+				}
+			},
+		},
+		{
+			name:    "group",
+			setup:   []string{"group add BND layer=BOUND color=1"},
+			command: "group del BND",
+			deleted: "group:BND",
+			validate: func(t *testing.T, p *project.Project) {
+				if _, ok := p.Groups["BND"]; ok {
+					t.Fatal("group still exists")
+				}
+			},
+		},
+		{
+			name:    "code style",
+			setup:   []string{"group add BND layer=BOUND color=1", "code style set PEG group=BND"},
+			command: "code style del PEG",
+			deleted: "code:PEG",
+			validate: func(t *testing.T, p *project.Project) {
+				if _, ok := p.PointCodeStyles["PEG"]; ok {
+					t.Fatal("code style still exists")
+				}
+			},
+		},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			p := project.New("test")
+			for _, command := range test.setup {
+				mustExec(t, p, command)
+			}
+			got, err := Execute(p, test.command)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if len(got.Deleted) != 1 || got.Deleted[0] != test.deleted {
+				t.Fatalf("deleted=%v want %s", got.Deleted, test.deleted)
+			}
+			if len(got.Updated) != 0 {
+				t.Fatalf("updated=%v want none", got.Updated)
+			}
+			test.validate(t, p)
+		})
+	}
+}
+
 func TestLineAddAndDeleteValidateExistingIDs(t *testing.T) {
 	p := project.New("test")
 	mustExec(t, p, "pt add 1 0 0")
@@ -819,6 +926,12 @@ func TestLineGenRequiresAtLeastTwoMatchingPoints(t *testing.T) {
 	mustExec(t, p, "pt add 1 0 0 PEG")
 	if _, err := Execute(p, "line gen PEG"); err == nil {
 		t.Fatal("expected insufficient points error")
+	}
+}
+
+func TestLinePairKeyIsUndirected(t *testing.T) {
+	if linePairKey("1", "2") != linePairKey("2", "1") {
+		t.Fatal("line pair key should ignore endpoint order")
 	}
 }
 

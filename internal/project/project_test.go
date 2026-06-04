@@ -48,7 +48,7 @@ func TestProjectJSONRoundTripPreservesPointCode(t *testing.T) {
 		}},
 	}
 	p.AddHistory("pt add 1 100 200 42.5 PEG", "added point 1", []string{"point:1"}, nil)
-	p.AddHistoryChange("undo", "undid pt edit 1 code=PEG", nil, []string{"point:1"}, map[string]string{"action": "undo"}, nil)
+	p.AddHistoryChange("undo", "undid pt edit 1 code=PEG", nil, []string{"point:1"}, []string{"point:2"}, map[string]string{"action": "undo"}, nil)
 
 	path := filepath.Join(t.TempDir(), "project.lsurvey.json")
 	if err := Save(path, p); err != nil {
@@ -91,7 +91,7 @@ func TestProjectJSONRoundTripPreservesPointCode(t *testing.T) {
 	if len(got.History) != 2 {
 		t.Fatalf("history length=%d want 2", len(got.History))
 	}
-	if got.History[1].Updated[0] != "point:1" || len(got.History[1].Extra) == 0 {
+	if got.History[1].Updated[0] != "point:1" || got.History[1].Deleted[0] != "point:2" || len(got.History[1].Extra) == 0 {
 		t.Fatalf("extended history=%+v", got.History[1])
 	}
 	if len(got.ContourSets["C1"].Polylines) != 1 {
@@ -149,6 +149,7 @@ func TestProjectCloneDeepCopiesMutableFields(t *testing.T) {
 		Command: "pt add 1",
 		Created: []string{"point:1"},
 		Updated: []string{"project"},
+		Deleted: []string{"point:2"},
 		Extra:   []byte(`{"source":"test"}`),
 	}}
 
@@ -186,6 +187,7 @@ func TestProjectCloneDeepCopiesMutableFields(t *testing.T) {
 	cloned.ContourSets["C1"] = set
 	cloned.History[0].Created[0] = "point:9"
 	cloned.History[0].Updated[0] = "changed"
+	cloned.History[0].Deleted[0] = "point:10"
 	cloned.History[0].Extra[0] = '['
 
 	originalSet := p.ContourSets["C1"]
@@ -213,7 +215,7 @@ func TestProjectCloneDeepCopiesMutableFields(t *testing.T) {
 	if originalSet.RawPolylines[0].Vertices[0].Easting != 200 || originalSet.Polylines[0].Vertices[0].Northing != 105 {
 		t.Fatalf("contour polylines shared: %+v", originalSet)
 	}
-	if p.History[0].Created[0] != "point:1" || p.History[0].Updated[0] != "project" || string(p.History[0].Extra) != `{"source":"test"}` {
+	if p.History[0].Created[0] != "point:1" || p.History[0].Updated[0] != "project" || p.History[0].Deleted[0] != "point:2" || string(p.History[0].Extra) != `{"source":"test"}` {
 		t.Fatalf("history shared: %+v", p.History[0])
 	}
 }

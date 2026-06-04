@@ -74,7 +74,7 @@ func execLine(p *project.Project, f []string) (Result, error) {
 			return Result{}, fmt.Errorf("line %q not found", f[2])
 		}
 		delete(p.Features, f[2])
-		return staleContours(Result{Message: "deleted line " + f[2], Updated: []string{"line:" + f[2]}}, "feature geometry changed"), nil
+		return staleContours(Result{Message: "deleted line " + f[2], Deleted: []string{"line:" + f[2]}}, "feature geometry changed"), nil
 	case "edit":
 		if len(f) < 4 {
 			return Result{}, fmt.Errorf("usage: line edit <id> [from=] [to=] [code=] [desc=] [group=<id>|none] [terrain=none|standard|ridge|drain]")
@@ -179,17 +179,20 @@ func genLinesByCode(p *project.Project, code, groupID string) (Result, error) {
 		return Result{}, fmt.Errorf("line gen requires at least 2 points with code %q", code)
 	}
 
+	linePairs := existingLinePairs(p)
 	created := make([]string, 0, len(matching)-1)
 	skipped := 0
 	for i := 0; i < len(matching)-1; i++ {
 		from := matching[i].ID
 		to := matching[i+1].ID
-		if hasLineBetween(p, from, to) {
+		pair := linePairKey(from, to)
+		if linePairs[pair] {
 			skipped++
 			continue
 		}
 		id := p.NextFeatureID()
 		p.Features[id] = project.Feature{ID: id, Kind: project.FeatureLine, PointIDs: []string{from, to}, Code: code, GroupID: groupID}
+		linePairs[pair] = true
 		created = append(created, "line:"+id)
 	}
 	result := Result{
@@ -202,13 +205,26 @@ func genLinesByCode(p *project.Project, code, groupID string) (Result, error) {
 	return staleContours(result, "line geometry changed"), nil
 }
 
-func hasLineBetween(p *project.Project, a, b string) bool {
+func existingLinePairs(p *project.Project) map[linePair]bool {
+	pairs := make(map[linePair]bool)
 	for _, feature := range p.Features {
-		if feature.Kind == project.FeatureLine && ((feature.PointIDs[0] == a && feature.PointIDs[1] == b) || (feature.PointIDs[0] == b && feature.PointIDs[1] == a)) {
-			return true
+		if feature.Kind == project.FeatureLine && len(feature.PointIDs) >= 2 {
+			pairs[linePairKey(feature.PointIDs[0], feature.PointIDs[1])] = true
 		}
 	}
-	return false
+	return pairs
+}
+
+type linePair struct {
+	A string
+	B string
+}
+
+func linePairKey(a, b string) linePair {
+	if a > b {
+		a, b = b, a
+	}
+	return linePair{A: a, B: b}
 }
 
 func execGroup(p *project.Project, f []string) (Result, error) {
@@ -268,7 +284,7 @@ func execGroup(p *project.Project, f []string) (Result, error) {
 			}
 		}
 		delete(p.Groups, f[2])
-		return changed(Result{Message: "deleted group " + f[2], Updated: []string{"group:" + f[2]}}), nil
+		return changed(Result{Message: "deleted group " + f[2], Deleted: []string{"group:" + f[2]}}), nil
 	case "list":
 		return Result{Message: fmt.Sprintf("%d groups", len(p.Groups))}, nil
 	case "info":
@@ -311,7 +327,7 @@ func execCode(p *project.Project, f []string) (Result, error) {
 			return Result{}, fmt.Errorf("point code style %q not found", f[3])
 		}
 		delete(p.PointCodeStyles, f[3])
-		return changed(Result{Message: "deleted point code style " + f[3], Updated: []string{"code:" + f[3]}}), nil
+		return changed(Result{Message: "deleted point code style " + f[3], Deleted: []string{"code:" + f[3]}}), nil
 	case "list":
 		if len(f) != 3 {
 			return Result{}, fmt.Errorf("usage: code style list")
@@ -422,7 +438,7 @@ func execOrderedFeature(p *project.Project, f []string, kind string) (Result, er
 			return Result{}, fmt.Errorf("%s %q not found", name, f[2])
 		}
 		delete(p.Features, f[2])
-		return staleContours(Result{Message: "deleted " + name + " " + f[2], Updated: []string{name + ":" + f[2]}}, "feature geometry changed"), nil
+		return staleContours(Result{Message: "deleted " + name + " " + f[2], Deleted: []string{name + ":" + f[2]}}, "feature geometry changed"), nil
 	case "list":
 		return Result{Message: fmt.Sprintf("%d %ss", countFeatures(p, kind), name)}, nil
 	case "info":

@@ -10,6 +10,7 @@ type Result struct {
 	Message             string
 	Created             []string
 	Updated             []string
+	Deleted             []string
 	Changed             bool
 	StaleContoursReason string
 }
@@ -86,7 +87,7 @@ func Execute(p *project.Project, command string) (Result, error) {
 func ExecuteAndRecord(p *project.Project, command string) (Result, error) {
 	result, err := Execute(p, command)
 	if err == nil && result.Changed {
-		p.AddHistoryChange(command, result.Message, result.Created, result.Updated, nil, nil)
+		p.AddHistoryChange(command, result.Message, result.Created, result.Updated, result.Deleted, nil, nil)
 	}
 	return result, err
 }

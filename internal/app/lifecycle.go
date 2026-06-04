@@ -146,7 +146,7 @@ func (l sessionLifecycle) TryExecute(command string, fields []string) (Outcome, 
 		default:
 			return Outcome{}, true, fmt.Errorf("usage: import csv|geojson|codes <file>")
 		}
-		if err := s.commitMutation(before, command, outcome.Message, nil, nil); err != nil {
+		if err := s.commitMutation(before, command, outcome.Message, nil, nil, nil); err != nil {
 			return Outcome{}, true, err
 		}
 		outcome.ProjectChanged = true
@@ -161,7 +161,7 @@ func (l sessionLifecycle) TryExecute(command string, fields []string) (Outcome, 
 		}
 		s.Project.Description = description
 		outcome.Message = "project description updated"
-		if err := s.commitMutation(before, command, outcome.Message, nil, nil); err != nil {
+		if err := s.commitMutation(before, command, outcome.Message, nil, nil, nil); err != nil {
 			return Outcome{}, true, err
 		}
 		outcome.ProjectChanged = true
@@ -179,7 +179,7 @@ func (l sessionLifecycle) TryExecute(command string, fields []string) (Outcome, 
 		}
 		s.Project.SetDisplayPrecision(precision)
 		outcome.Message = fmt.Sprintf("display precision set to %d", precision)
-		if err := s.commitMutation(before, command, outcome.Message, nil, nil); err != nil {
+		if err := s.commitMutation(before, command, outcome.Message, nil, nil, nil); err != nil {
 			return Outcome{}, true, err
 		}
 		outcome.ProjectChanged = true

@@ -99,7 +99,7 @@ func (s *Session) executeCOGOCommand(command string) (Outcome, error) {
 	}
 	outcome := Outcome{Message: result.Message}
 	if result.Changed {
-		if err := s.commitMutation(before, command, result.Message, result.Created, result.Updated); err != nil {
+		if err := s.commitMutation(before, command, result.Message, result.Created, result.Updated, result.Deleted); err != nil {
 			return Outcome{}, err
 		}
 		outcome.ProjectChanged = true
@@ -107,12 +107,12 @@ func (s *Session) executeCOGOCommand(command string) (Outcome, error) {
 	return outcome, nil
 }
 
-func (s *Session) commitMutation(before *project.Project, command, message string, created, updated []string) error {
-	return s.commitMutationExtra(before, command, message, created, updated, nil)
+func (s *Session) commitMutation(before *project.Project, command, message string, created, updated, deleted []string) error {
+	return s.commitMutationExtra(before, command, message, created, updated, deleted, nil)
 }
 
-func (s *Session) commitMutationExtra(before *project.Project, command, message string, created, updated []string, extra any) error {
-	s.Project.AddHistoryChange(command, message, created, updated, extra, nil)
+func (s *Session) commitMutationExtra(before *project.Project, command, message string, created, updated, deleted []string, extra any) error {
+	s.Project.AddHistoryChange(command, message, created, updated, deleted, extra, nil)
 	after, err := cloneProject(s.Project)
 	if err != nil {
 		return err
@@ -174,7 +174,7 @@ func (s *Session) CommitConvertedPoints(request ConversionCommit) (Outcome, erro
 		"source_system": request.SourceSystem, "target_system": request.TargetSystem,
 		"model": model, "count": len(request.Points), "elevation": "unchanged",
 	}
-	if err := s.commitMutationExtra(before, command, message, created, nil, extra); err != nil {
+	if err := s.commitMutationExtra(before, command, message, created, nil, nil, extra); err != nil {
 		return Outcome{}, err
 	}
 	return Outcome{Message: message, ProjectChanged: true, CoordinateLabel: s.Project.CoordinateLabel()}, nil
@@ -191,7 +191,7 @@ func (s *Session) undoEdit() (Outcome, error) {
 	s.undo = s.undo[:len(s.undo)-1]
 	s.redo = append(s.redo, frame)
 	message := "undid " + frame.Command
-	s.Project.AddHistoryChange("undo", message, nil, nil, historyAction{Action: "undo", TargetCommand: frame.Command}, nil)
+	s.Project.AddHistoryChange("undo", message, nil, nil, nil, historyAction{Action: "undo", TargetCommand: frame.Command}, nil)
 	s.Dirty = true
 	return Outcome{Message: message, ProjectChanged: true, CoordinateLabel: s.Project.CoordinateLabel()}, nil
 }
@@ -207,7 +207,7 @@ func (s *Session) redoEdit() (Outcome, error) {
 	s.redo = s.redo[:len(s.redo)-1]
 	s.undo = append(s.undo, frame)
 	message := "redid " + frame.Command
-	s.Project.AddHistoryChange("redo", message, nil, nil, historyAction{Action: "redo", TargetCommand: frame.Command}, nil)
+	s.Project.AddHistoryChange("redo", message, nil, nil, nil, historyAction{Action: "redo", TargetCommand: frame.Command}, nil)
 	s.Dirty = true
 	return Outcome{Message: message, ProjectChanged: true, CoordinateLabel: s.Project.CoordinateLabel()}, nil
 }
@@ -274,6 +274,9 @@ func historyDetail(index int, record project.HistoryRecord) string {
 	}
 	if len(record.Updated) > 0 {
 		fmt.Fprintf(&b, "\nupdated=%s", strings.Join(record.Updated, ","))
+	}
+	if len(record.Deleted) > 0 {
+		fmt.Fprintf(&b, "\ndeleted=%s", strings.Join(record.Deleted, ","))
 	}
 	if len(record.Extra) > 0 {
 		fmt.Fprintf(&b, "\nextra=%s", record.Extra)

@@ -150,7 +150,7 @@ func execContour(p *project.Project, f []string) (Result, error) {
 			return Result{}, fmt.Errorf("contour set %q not found", f[2])
 		}
 		delete(p.ContourSets, f[2])
-		return changed(Result{Message: "deleted contour set " + f[2], Updated: []string{"contour:" + f[2]}}), nil
+		return changed(Result{Message: "deleted contour set " + f[2], Deleted: []string{"contour:" + f[2]}}), nil
 	default:
 		return Result{}, fmt.Errorf("unknown contour subcommand %q", f[1])
 	}
