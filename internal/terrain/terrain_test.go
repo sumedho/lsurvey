@@ -135,6 +135,32 @@ func TestInsertConstraintEdgesRecoversBreakline(t *testing.T) {
 	}
 }
 
+func TestTriangulateReturnsOriginalNonDegenerateIndexes(t *testing.T) {
+	points := []vertex{
+		{ID: "1", N: 0, E: 0, Z: 0},
+		{ID: "2", N: 0, E: 10, Z: 10},
+		{ID: "3", N: 10, E: 0, Z: 10},
+		{ID: "4", N: 5, E: 5, Z: 5},
+	}
+	tris, err := triangulate(points)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(tris) == 0 {
+		t.Fatal("expected at least one triangle")
+	}
+	for _, tri := range tris {
+		for _, index := range []int{tri.A, tri.B, tri.C} {
+			if index < 0 || index >= len(points) {
+				t.Fatalf("triangle index %d outside input range in %+v", index, tri)
+			}
+		}
+		if math.Abs(orient(points[tri.A], points[tri.B], points[tri.C])) <= eps {
+			t.Fatalf("degenerate triangle returned: %+v", tri)
+		}
+	}
+}
+
 func TestGenerateContoursClipsToTwoDimensionalBoundary(t *testing.T) {
 	p := planarContourProject()
 	addRing(p, "B", "BOUND", []geom.Point{

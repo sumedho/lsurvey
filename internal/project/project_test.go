@@ -105,6 +105,134 @@ func TestProjectJSONRoundTripPreservesPointCode(t *testing.T) {
 	}
 }
 
+func TestProjectCloneDeepCopiesMutableFields(t *testing.T) {
+	p := New("test")
+	p.SetDisplayPrecision(4)
+	z := 42.5
+	base := 40.0
+	maxEdge := 12.5
+	p.Units["distance"] = "m"
+	p.Points["1"] = geom.Point{ID: "1", Northing: 100, Easting: 200, Elevation: &z, Code: "PEG"}
+	p.Groups["BOUND"] = Group{ID: "BOUND", Layer: "BOUNDARIES", Color: 1}
+	p.PointCodeStyles["PEG"] = "BOUND"
+	p.Features["L1"] = Feature{ID: "L1", Kind: FeaturePolyline, PointIDs: []string{"1", "2"}, Code: "BOUNDARY"}
+	p.LegacyLines = map[string]Line{"OLD": {ID: "OLD", From: "1", To: "2"}}
+	p.Traverse = &TraverseState{Start: "1", Current: "2", LegPointIDs: []string{"2"}}
+	p.GridGround = &GridGroundConversion{Mode: "local_ground", AnchorEasting: 200, AnchorNorthing: 100, CSF: 0.9996}
+	p.HorizontalCRS = &HorizontalCRS{Datum: "GDA2020", Projection: "MGA", Zone: 50}
+	p.ContourSets["C1"] = ContourSet{
+		ID:             "C1",
+		SourcePoints:   []string{"1", "2", "3"},
+		Breaklines:     []string{"L1"},
+		BreaklineRoles: map[string]string{"L1": "ridge"},
+		BoundaryLines:  []string{"B1"},
+		ExclusionLines: []string{"X1"},
+		Generation: &ContourGenerationSpec{
+			Interval:       1,
+			Base:           &base,
+			BreaklineIDs:   []string{"L1"},
+			BoundaryCodes:  []string{"BOUNDARY"},
+			ExclusionCodes: []string{"VOID"},
+			MaxEdge:        &maxEdge,
+		},
+		Diagnostics: []ContourDiagnostic{{Code: "long_edge", PointIDs: []string{"1", "2"}, EdgeIDs: []string{"L1"}}},
+		RawPolylines: []ContourPolyline{{
+			ID:       "raw",
+			Vertices: []ContourVertex{{Easting: 200, Northing: 100}},
+		}},
+		Polylines: []ContourPolyline{{
+			ID:       "smooth",
+			Vertices: []ContourVertex{{Easting: 205, Northing: 105}},
+		}},
+	}
+	p.History = []HistoryRecord{{
+		Command: "pt add 1",
+		Created: []string{"point:1"},
+		Updated: []string{"project"},
+		Extra:   []byte(`{"source":"test"}`),
+	}}
+
+	cloned := p.Clone()
+
+	*cloned.Display.Precision = 2
+	cloned.Units["distance"] = "ft"
+	pt := cloned.Points["1"]
+	*pt.Elevation = 99
+	cloned.Points["1"] = pt
+	cloned.Groups["BOUND"] = Group{ID: "BOUND", Layer: "CHANGED", Color: 2}
+	cloned.PointCodeStyles["PEG"] = "CHANGED"
+	feature := cloned.Features["L1"]
+	feature.PointIDs[0] = "9"
+	cloned.Features["L1"] = feature
+	cloned.LegacyLines["OLD"] = Line{ID: "OLD", From: "9", To: "10"}
+	cloned.Traverse.LegPointIDs[0] = "9"
+	cloned.GridGround.AnchorEasting = 999
+	cloned.HorizontalCRS.Zone = 51
+	set := cloned.ContourSets["C1"]
+	set.SourcePoints[0] = "9"
+	set.Breaklines[0] = "L9"
+	set.BreaklineRoles["L1"] = "drain"
+	set.BoundaryLines[0] = "B9"
+	set.ExclusionLines[0] = "X9"
+	*set.Generation.Base = 44
+	set.Generation.BreaklineIDs[0] = "L9"
+	set.Generation.BoundaryCodes[0] = "ROAD"
+	set.Generation.ExclusionCodes[0] = "TREE"
+	*set.Generation.MaxEdge = 99
+	set.Diagnostics[0].PointIDs[0] = "9"
+	set.Diagnostics[0].EdgeIDs[0] = "L9"
+	set.RawPolylines[0].Vertices[0].Easting = 999
+	set.Polylines[0].Vertices[0].Northing = 999
+	cloned.ContourSets["C1"] = set
+	cloned.History[0].Created[0] = "point:9"
+	cloned.History[0].Updated[0] = "changed"
+	cloned.History[0].Extra[0] = '['
+
+	originalSet := p.ContourSets["C1"]
+	if *p.Display.Precision != 4 || p.Units["distance"] != "m" || *p.Points["1"].Elevation != 42.5 {
+		t.Fatalf("basic mutable fields shared: precision=%d units=%+v point=%+v", *p.Display.Precision, p.Units, p.Points["1"])
+	}
+	if p.Groups["BOUND"].Layer != "BOUNDARIES" || p.PointCodeStyles["PEG"] != "BOUND" || p.Features["L1"].PointIDs[0] != "1" {
+		t.Fatalf("map values shared: groups=%+v styles=%+v features=%+v", p.Groups, p.PointCodeStyles, p.Features)
+	}
+	if p.LegacyLines["OLD"].From != "1" || p.Traverse.LegPointIDs[0] != "2" || p.GridGround.AnchorEasting != 200 || p.HorizontalCRS.Zone != 50 {
+		t.Fatalf("struct pointers shared: legacy=%+v traverse=%+v grid=%+v crs=%+v", p.LegacyLines, p.Traverse, p.GridGround, p.HorizontalCRS)
+	}
+	if originalSet.SourcePoints[0] != "1" || originalSet.Breaklines[0] != "L1" || originalSet.BreaklineRoles["L1"] != "ridge" {
+		t.Fatalf("contour references shared: %+v", originalSet)
+	}
+	if originalSet.BoundaryLines[0] != "B1" || originalSet.ExclusionLines[0] != "X1" {
+		t.Fatalf("contour clip lines shared: %+v", originalSet)
+	}
+	if *originalSet.Generation.Base != 40 || originalSet.Generation.BreaklineIDs[0] != "L1" || originalSet.Generation.BoundaryCodes[0] != "BOUNDARY" || originalSet.Generation.ExclusionCodes[0] != "VOID" || *originalSet.Generation.MaxEdge != 12.5 {
+		t.Fatalf("contour generation shared: %+v", originalSet.Generation)
+	}
+	if originalSet.Diagnostics[0].PointIDs[0] != "1" || originalSet.Diagnostics[0].EdgeIDs[0] != "L1" {
+		t.Fatalf("contour diagnostics shared: %+v", originalSet.Diagnostics)
+	}
+	if originalSet.RawPolylines[0].Vertices[0].Easting != 200 || originalSet.Polylines[0].Vertices[0].Northing != 105 {
+		t.Fatalf("contour polylines shared: %+v", originalSet)
+	}
+	if p.History[0].Created[0] != "point:1" || p.History[0].Updated[0] != "project" || string(p.History[0].Extra) != `{"source":"test"}` {
+		t.Fatalf("history shared: %+v", p.History[0])
+	}
+}
+
+func TestProjectClonePreservesNilFields(t *testing.T) {
+	p := &Project{Name: "nil-heavy"}
+
+	cloned := p.Clone()
+	if cloned == nil {
+		t.Fatal("clone is nil")
+	}
+	if cloned.Display.Precision != nil || cloned.Units != nil || cloned.Points != nil || cloned.Groups != nil || cloned.PointCodeStyles != nil || cloned.Features != nil || cloned.LegacyLines != nil || cloned.ContourSets != nil || cloned.History != nil {
+		t.Fatalf("nil fields not preserved: %+v", cloned)
+	}
+	if cloned.Traverse != nil || cloned.GridGround != nil || cloned.HorizontalCRS != nil {
+		t.Fatalf("nil pointers not preserved: %+v", cloned)
+	}
+}
+
 func TestLoadMigratesSchemaOneProject(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "old.srv")
 	data := []byte(`{

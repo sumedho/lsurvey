@@ -1,7 +1,6 @@
 package app
 
 import (
-	"encoding/json"
 	"fmt"
 	"os"
 	"sort"
@@ -230,15 +229,7 @@ func (s *Session) clearNavigation() {
 }
 
 func cloneProject(p *project.Project) (*project.Project, error) {
-	data, err := json.Marshal(p)
-	if err != nil {
-		return nil, err
-	}
-	var cloned project.Project
-	if err := json.Unmarshal(data, &cloned); err != nil {
-		return nil, err
-	}
-	return &cloned, nil
+	return p.Clone(), nil
 }
 
 func (s *Session) historyReport(fields []string) (string, error) {
