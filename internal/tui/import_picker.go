@@ -22,7 +22,6 @@ func (m *Model) startImportPicker() tea.Cmd {
 	m.importPicker = picker
 	m.importPicking = true
 	m.importReturn = m.mode
-	m.importConfirmPath = ""
 	m.message = "select a .srv, .csv, or .geojson file"
 	m.lastErr = ""
 	return m.importPicker.Init()
@@ -43,24 +42,10 @@ func (m Model) canStartImportPicker() bool {
 
 func (m Model) updateImportPicker(msg tea.Msg) (tea.Model, tea.Cmd) {
 	if keyMsg, ok := msg.(tea.KeyMsg); ok {
-		if m.importConfirmPath != "" {
-			switch keyMsg.String() {
-			case "ctrl+c":
-				m.quitting = true
-				return m, tea.Quit
-			case "y", "Y", "enter":
-				return m.finishPickedImport(m.importConfirmPath)
-			case "n", "N", "esc":
-				m.importConfirmPath = ""
-				m.message = "project open cancelled"
-				return m, nil
-			}
-			return m, nil
-		}
 		switch keyMsg.String() {
 		case "ctrl+c":
-			m.quitting = true
-			return m, tea.Quit
+			cmd := m.dispatchCommand("quit")
+			return m, cmd
 		case "esc":
 			m.importPicking = false
 			m.mode = m.importReturn
@@ -72,11 +57,6 @@ func (m Model) updateImportPicker(msg tea.Msg) (tea.Model, tea.Cmd) {
 	var cmd tea.Cmd
 	m.importPicker, cmd = m.importPicker.Update(msg)
 	if selected, path := m.importPicker.DidSelectFile(msg); selected {
-		if isProjectFile(path) && m.dirty {
-			m.importConfirmPath = path
-			m.message = "confirm project open"
-			return m, cmd
-		}
 		return m.finishPickedImport(path)
 	}
 	if selected, path := m.importPicker.DidSelectDisabledFile(msg); selected {
@@ -92,19 +72,13 @@ func (m Model) finishPickedImport(path string) (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 	m.importPicking = false
-	m.importConfirmPath = ""
-	cmd := (&m).ExecuteCommand(command)
+	cmd := (&m).dispatchCommand(command)
 	m.mode = ModeMain
 	return m, cmd
 }
 
 func (m Model) renderImportPicker(width, height int) string {
 	title := "Select project or import file"
-	if m.importConfirmPath != "" {
-		body := fmt.Sprintf("Open %s and replace the current dirty project?\n\ny/Enter: open  n/Esc: cancel",
-			m.importConfirmPath)
-		return box(title, body, width, height)
-	}
 	body := fmt.Sprintf("Directory: %s\n\n%s\nEnter/right: open/select  arrows/j/k: move  left/backspace: parent  Esc: cancel",
 		m.importPicker.CurrentDirectory, m.importPicker.View())
 	if m.lastErr != "" {

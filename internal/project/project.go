@@ -11,6 +11,8 @@ import (
 	"lsurvey/internal/geom"
 )
 
+// CurrentSchemaVersion describes the legacy JSON bridge only. Native storage
+// uses SQLiteSchemaVersion and does not persist this model compatibility field.
 const CurrentSchemaVersion = 8
 
 // Line is retained only for decoding project files written before feature geometry.
@@ -191,11 +193,11 @@ func New(name string) *Project {
 }
 
 func Load(path string) (*Project, error) {
-	return (JSONStore{}).Load(path)
+	return (SQLiteStore{}).Load(path)
 }
 
 func Save(path string, p *Project) error {
-	return (JSONStore{}).Save(path, p)
+	return (SQLiteStore{}).Save(path, p)
 }
 
 func (p *Project) AddHistory(command, result string, created []string, err error) {

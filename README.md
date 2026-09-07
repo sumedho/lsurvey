@@ -41,7 +41,7 @@ see [TUTORIAL.md](/Users/sumedho/Documents/repos/lsurvey/TUTORIAL.md).
 
 ## Requirements
 
-- Go 1.22 or newer.
+- Go 1.25 or newer (to build from source).
 - A terminal that supports ANSI escape sequences.
 
 ## Run
@@ -119,21 +119,55 @@ The command line is the main way to work with the project. Type `help` or press
 `F1` to open a searchable command browser. Use `/` to filter commands and
 `Enter` to open detailed usage and examples.
 
+Point and feature headers stay pinned while their rows scroll. Focus a table
+with `Tab`, scroll to a row, and press `Enter` to inspect the top visible row's
+full coordinates, code, group, layer, and description. Narrow terminals use
+fewer columns; short terminals show the active table above the command input.
+Save state and coordinate/traverse context are shown on separate status lines.
+Style and conversion forms use a full-screen field window, keeping the active
+field and validation feedback visible.
+
+`F6` or `results` opens the last 100 command results retained in this TUI session.
+Use arrows, page keys, or the mouse wheel to scroll, `[`/`]` for previous/next
+results, `c` to copy, and `e` to export to a **new** text file. Export never
+overwrites an existing file. Clipboard availability depends on the host system.
+Results are not persisted in the project; export reports you want to keep.
+
+Opening, creating, recovering, or quitting with unsaved work offers **Save,
+Discard, or Cancel**. A new project prompts for a save path. Staged conversion
+rows are not project data: the dialog warns that they will be discarded even
+when project edits are saved. Changing the conversion source also asks before
+clearing staged rows.
+
+The interactive executable runs project commands and lengthy conversion/import
+operations as serialized background jobs, with elapsed-time activity feedback.
+While busy, other edits are disabled. `Esc` requests cancellation for operations
+without file-writing side effects; the worker finishes safely and its result is
+discarded. Saves and exports cannot be cancelled once started. There is no
+percentage estimate for operations that do not report progress.
+
 ## Keys
 
 - `F1`: open searchable command help.
 - `F2`: toggle the ASCII map view.
 - `F3`: open the code styling editor.
 - `F4`: open the coordinate conversion workspace.
+- `F5`: browse for project, CSV, or GeoJSON files.
+- `F6`: open retained command results.
 - `/`: start a point filter command.
 - `Tab`: advance the current completion one input at a time. For point IDs
   being created, completion suggests the next unused integer point ID.
 - `Ctrl+n` / `Ctrl+p`: cycle command completions.
-- `Up` / `Down`: browse previous commands when the command input is empty.
+- `Up` / `Down`: browse previous commands while command input is focused;
+  returning past the newest entry restores your unfinished draft.
 - `Alt+s`: cycle point sort field.
 - `Alt+d`: toggle ascending/descending point sort direction.
 - `Esc`: return from help detail, clear a help filter, close help, the map view, code styling editor, or coordinate conversion workspace.
-- `Ctrl+C`: quit.
+- `Ctrl+C`: request quit with unsaved-work protection (request cancellation while busy).
+
+Keyboard screen shortcuts and mouse tabs preserve command and form drafts.
+Help's `Esc` returns to the screen it was opened from. File pickers and safety
+dialogs remain modal.
 
 Map keys:
 
@@ -173,8 +207,8 @@ Notes:
 - `open job` and `open job.srv` both load `job.srv`.
 - `save job` writes `job.srv`.
 - `saveas revised` writes `revised.srv`.
-- Saves validate the project and replace the file atomically. Replacing a valid
-  save retains its previous contents in `<file>.srv.bak`. `recover job` loads that
+- Saves validate the project and commit native SQLite data transactionally.
+  Saving an existing database retains its previous state in `<file>.srv.bak`. `recover job` loads that
   previous save as an unsaved project; use `saveas recovered` to preserve the
   original. Recovery clears session undo/redo. This is previous-save recovery,
   not autosave of unsaved edits. Corrupt originals are not overwritten by Save.
@@ -455,6 +489,7 @@ style
 convert
 help
 help <command>
+results
 ```
 
 Examples:
@@ -652,15 +687,19 @@ export csv lot42_points
 
 ## Project Files
 
-Project files are JSON documents with a `.srv` extension. They store:
+Project files are native SQLite databases with a `.srv` extension, using
+[modernc.org/sqlite](https://pkg.go.dev/modernc.org/sqlite). The driver is pure Go;
+release builds still use `CGO_ENABLED=0` and need no separately installed SQLite.
+Data is stored in relational tables with foreign keys and constraints, not a
+serialized project blob. They store:
 
-- File format `schema_version` for compatibility.
+- SQLite `application_id` and `user_version` for format identification/versioning.
 - Optional `app_version` for the `lsurvey` build that last saved the file.
 - Project name and description.
 - Unit labels.
 - Display precision.
 - Points.
-- Lines.
+- Features and their ordered point references.
 - Contour sets.
 - Traverse state.
 - Horizontal MGA datum/zone metadata once conversion output has been committed.
@@ -671,12 +710,20 @@ Project files are JSON documents with a `.srv` extension. They store:
 Undo and redo state is in-memory session state and is not stored in project
 files. Reopening a saved project starts with empty undo and redo stacks.
 
-The file format is intended to remain readable and versioned, but users should
-edit projects through `lsurvey` unless they understand the schema.
+Use `open old-job.srv` to read a legacy JSON project, then `saveas new-job` to
+write SQLite. Saving over the legacy file is rejected, preserving the original.
+Older releases cannot open SQLite projects. Unknown database versions and
+unrelated SQLite databases are rejected without modification.
 
-`schema_version` controls compatibility. It is separate from the application
-release version, so routine app releases do not require a project file version
-bump unless the persisted schema changes.
+Explicit Save remains the persistence boundary: edits and undo/redo stay in
+memory until saved. Existing databases are updated in place in one transaction;
+audit history is append-only. New files and backup snapshots are published
+atomically. A failed save leaves the session dirty. Backups use SQLite snapshots,
+including committed WAL content, rather than copying an open database file.
+
+SQLite schema version 1 is independent of both legacy JSON versions and the
+application release version. See [the native storage design](docs/sqlite-storage.md)
+and [schema](internal/project/sqlite_schema.sql) for table definitions.
 
 ## Releases
 

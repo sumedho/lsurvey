@@ -27,6 +27,7 @@ const (
 	ModeMap
 	ModeStyle
 	ModeConvert
+	ModeResults
 )
 
 const splashDuration = 1500 * time.Millisecond
@@ -49,42 +50,59 @@ const (
 )
 
 type Model struct {
-	session *app.Session
-	project *project.Project
-	path    string
-	version string
-	dirty   bool
+	tables        *tableCache
+	tableRevision uint64
+	asyncJobs     bool
+	job           *backgroundJob
+	queuedJob     tea.Cmd
+	session       *app.Session
+	project       *project.Project
+	path          string
+	version       string
+	dirty         bool
 
-	input      textinput.Model
-	help       viewport.Model
-	helpList   list.Model
-	helpPage   helpPage
-	helpReturn bool
-	pointsView viewport.Model
-	linesView  viewport.Model
-	mode       Mode
-	prior      Mode
-	mapState   MapState
-	style      StyleState
-	convert    ConversionState
-	focus      mainFocus
+	input                     textinput.Model
+	help                      viewport.Model
+	helpList                  list.Model
+	helpPage                  helpPage
+	helpReturn                bool
+	pointsView                viewport.Model
+	linesView                 viewport.Model
+	pointHeader, lineHeader   string
+	pointDetails, lineDetails []string
+	visiblePoints             int
+	mode                      Mode
+	prior                     Mode
+	mapState                  MapState
+	style                     StyleState
+	convert                   ConversionState
+	focus                     mainFocus
 
-	importPicker      filepicker.Model
-	importPicking     bool
-	importReturn      Mode
-	importConfirmPath string
+	importPicker  filepicker.Model
+	importPicking bool
+	importReturn  Mode
 
 	width  int
 	height int
 
-	filter   string
-	sort     SortField
-	sortAsc  bool
-	history  []string
-	histIdx  int
-	message  string
-	lastErr  string
-	quitting bool
+	filter        string
+	sort          SortField
+	sortAsc       bool
+	history       []string
+	histIdx       int
+	historyDraft  string
+	message       string
+	lastErr       string
+	quitting      bool
+	pendingAction string
+	confirmSave   bool
+	savePath      textinput.Model
+	results       []commandResult
+	resultIndex   int
+	resultView    viewport.Model
+	resultReturn  Mode
+	resultExport  bool
+	resultPath    textinput.Model
 
 	completionSuggestions []string
 	completionDirty       bool
@@ -140,6 +158,7 @@ func newModel(p *project.Project, path, version string, showSplash bool) Model {
 		message:    "F1 opens help. F5 browses for .srv/.csv/.geojson files. Tab accepts completions or switches panes when input is blank.",
 	}
 	m.invalidateCompletions()
+	m.resultPath = textinput.New()
 	if showSplash {
 		m.mode = ModeSplash
 	}
@@ -153,8 +172,10 @@ func Run(p *project.Project, path string) error {
 }
 
 func RunWithVersion(p *project.Project, path, version string) error {
+	model := NewStartupModelWithVersion(p, path, version)
+	model.asyncJobs = true
 	_, err := tea.NewProgram(
-		NewStartupModelWithVersion(p, path, version),
+		model,
 		tea.WithAltScreen(),
 		tea.WithMouseCellMotion(),
 	).Run()
@@ -168,7 +189,63 @@ func (m Model) Init() tea.Cmd {
 	return textinput.Blink
 }
 
-func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+func (m Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	if m.pendingAction != "" {
+		if k, ok := msg.(tea.KeyMsg); ok {
+			return m.updateProtection(k)
+		}
+		if size, ok := msg.(tea.WindowSizeMsg); ok {
+			m.width = size.Width
+			m.height = size.Height
+		}
+		return m, nil
+	}
+	if k, ok := msg.(tea.KeyMsg); ok && k.String() == "ctrl+c" {
+		cmd := m.dispatchCommand("quit")
+		return m, cmd
+	}
+	if result, ok := msg.(clipboardResultMsg); ok {
+		if result.err != nil {
+			m.setError(result.err.Error())
+		} else {
+			m.message = "Result copied"
+			m.lastErr = ""
+		}
+		return m, nil
+	}
+	if k, ok := msg.(tea.KeyMsg); ok && k.String() == "f6" && m.mode != ModeResults {
+		m.openResults()
+		return m, nil
+	}
+	if m.mode == ModeResults {
+		if size, ok := msg.(tea.WindowSizeMsg); ok {
+			m.width = size.Width
+			m.height = size.Height
+			m.refreshResult()
+			return m, nil
+		}
+		return m.updateResults(msg)
+	}
+	if k, ok := msg.(tea.KeyMsg); ok && !m.importPicking && !m.convert.picking && m.mode != ModeSplash {
+		var target Mode
+		switch k.String() {
+		case "f1":
+			target = ModeHelp
+		case "f2":
+			target = ModeMap
+		case "f3":
+			target = ModeStyle
+		case "f4":
+			target = ModeConvert
+		}
+		if target != ModeSplash {
+			if target == m.mode && target != ModeHelp {
+				target = ModeMain
+			}
+			m.selectTab(target)
+			return m, nil
+		}
+	}
 	if m.importPicking {
 		if _, isResize := msg.(tea.WindowSizeMsg); !isResize {
 			return m.updateImportPicker(msg)
@@ -260,7 +337,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					return m, nil
 				}
 				if msg.String() == "esc" && !m.helpList.SettingFilter() && !m.helpList.IsFiltered() {
-					m.mode = ModeMain
+					m.mode = m.priorMode()
 					return m, nil
 				}
 				var cmd tea.Cmd
@@ -273,7 +350,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					m.helpPage = helpPageBrowser
 					m.helpReturn = false
 				} else {
-					m.mode = ModeMain
+					m.mode = m.priorMode()
 				}
 				return m, nil
 			}
@@ -341,6 +418,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.quitting = true
 			return m, tea.Quit
 		case "enter":
+			if m.focus != focusCommand {
+				m.openRowDetails()
+				return m, nil
+			}
 			return m.executeInput()
 		case "tab":
 			if m.shouldCycleFocusOnTab() {
@@ -413,7 +494,16 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return m, cmd
 }
 
-func (m Model) View() string {
+func (m Model) renderView() string {
+	if m.job != nil {
+		return m.renderBusy()
+	}
+	if m.pendingAction != "" {
+		return m.renderProtection()
+	}
+	if m.mode == ModeResults {
+		return m.renderResults()
+	}
 	if m.quitting {
 		return ""
 	}
@@ -428,10 +518,10 @@ func (m Model) View() string {
 		width := max(60, m.width)
 		height := max(18, m.height) - tabBarHeight
 		if m.helpPage == helpPageBrowser {
-			body := mutedStyle.Render("/: filter  Enter: details  Esc: clear filter/Project  mouse wheel scroll  F1: help") + "\n" + m.helpList.View()
+			body := mutedStyle.Render("/: filter  Enter: details  Esc: clear filter/back  mouse wheel scroll  F1: help") + "\n" + m.helpList.View()
 			return m.renderWithTabs(box(m.helpBrowserTitle(), body, width, height), width)
 		}
-		back := "Esc returns to Project"
+		back := "Esc returns to previous screen"
 		if m.helpReturn {
 			back = "Esc returns to results"
 		}
@@ -443,25 +533,22 @@ func (m Model) View() string {
 		return m.renderWithTabs(renderMap(m.project, m.mapState, width, max(18, m.height)-tabBarHeight, m.project.DisplayPrecision()), width)
 	}
 	if m.mode == ModeStyle {
-		width := max(60, m.width)
-		return m.renderWithTabs(m.renderStyle(width, max(18, m.height)-tabBarHeight), width)
+		width := max(12, m.width)
+		return m.renderWithTabs(m.renderStyle(width, max(8, m.height)-tabBarHeight), width)
 	}
 	if m.mode == ModeConvert {
-		width := max(90, m.width)
-		return m.renderWithTabs(m.renderConvert(width, max(20, m.height)-tabBarHeight), width)
+		width := max(12, m.width)
+		return m.renderWithTabs(m.renderConvert(width, max(8, m.height)-tabBarHeight), width)
 	}
 
 	m.syncMainViewports()
+	if m.height > 0 && m.height < 24 {
+		return m.compactMain()
+	}
 
-	width := max(60, m.width)
-	height := max(18, m.height) - tabBarHeight
-	infoHeight := 4
-	commandHeight := 6
-	lineHeight := max(5, height/4)
-	pointHeight := max(6, height-infoHeight-commandHeight-lineHeight)
+	width, infoHeight, pointHeight, lineHeight, commandHeight := m.mainLayout()
 
-	points := FilterAndSortPoints(m.project, m.filter, m.sort, m.sortAsc)
-	info := m.infoText(len(points))
+	info := m.projectStatus(m.visiblePoints)
 	message := m.message
 	if m.lastErr != "" {
 		message = errorStyle.Render(m.lastErr)
@@ -474,9 +561,9 @@ func (m Model) View() string {
 	body := lipgloss.JoinVertical(
 		lipgloss.Left,
 		box("Info", info, width, infoHeight),
-		box(m.viewportPaneTitle("Points", focusPoints, m.pointsView), m.pointsView.View(), width, pointHeight),
-		box(m.viewportPaneTitle("Lines", focusLines, m.linesView), m.linesView.View(), width, lineHeight),
-		box(m.mainPaneTitle("Command", focusCommand), command, width, commandHeight),
+		box(m.viewportPaneTitle("Points", focusPoints, m.pointsView)+" · Enter: top row details", m.pointHeader+"\n"+m.pointsView.View(), width, pointHeight),
+		box(m.viewportPaneTitle("Lines", focusLines, m.linesView)+" · Enter: top row details", m.lineHeader+"\n"+m.linesView.View(), width, lineHeight),
+		box(m.mainPaneTitle("Command · F6: results", focusCommand), command, width, commandHeight),
 	)
 	return m.renderWithTabs(body, width)
 }
@@ -526,6 +613,7 @@ func (m *Model) ExecuteCommand(command string) tea.Cmd {
 	if command == "" {
 		return nil
 	}
+	defer m.retainResult(command)
 	fields, err := app.Fields(command)
 	if err != nil {
 		m.setError(err.Error())
@@ -535,6 +623,8 @@ func (m *Model) ExecuteCommand(command string) tea.Cmd {
 	defer m.refreshCompletions()
 	defer m.syncMainViewports()
 	switch fields[0] {
+	case "results":
+		m.openResults()
 	case "quit", "exit":
 		m.quitting = true
 		return tea.Quit
@@ -577,6 +667,9 @@ func (m *Model) ExecuteCommand(command string) tea.Cmd {
 			return nil
 		}
 		m.syncSessionState()
+		if outcome.ProjectChanged || outcome.ProjectReplaced {
+			m.tableRevision++
+		}
 		if outcome.ProjectReplaced {
 			m.mapState = newMapState()
 			m.style = newStyleState()
@@ -599,7 +692,7 @@ func (m Model) executeInput() (tea.Model, tea.Cmd) {
 	command := m.input.Value()
 	m.input.SetValue("")
 	m.recordHistory(command)
-	cmd := (&m).ExecuteCommand(command)
+	cmd := (&m).dispatchCommand(command)
 	return m, cmd
 }
 
@@ -714,22 +807,16 @@ func (m *Model) handleSort(fields []string) {
 }
 
 func (m *Model) syncMainViewports() {
-	width := max(60, m.width)
-	height := max(18, m.height) - tabBarHeight
-	infoHeight := 4
-	commandHeight := 6
-	lineHeight := max(5, height/4)
-	pointHeight := max(6, height-infoHeight-commandHeight-lineHeight)
+	width, _, pointHeight, lineHeight, _ := m.mainLayout()
 	contentWidth := max(1, width-4)
-	pointContentHeight := max(1, pointHeight-3)
-	lineContentHeight := max(1, lineHeight-3)
+	pointContentHeight := max(1, pointHeight-4)
+	lineContentHeight := max(1, lineHeight-4)
 
 	m.pointsView.Width = contentWidth
 	m.pointsView.Height = pointContentHeight
 	m.linesView.Width = contentWidth
 	m.linesView.Height = lineContentHeight
-	m.pointsView.SetContent(FormatPointRows(FilterAndSortPoints(m.project, m.filter, m.sort, m.sortAsc), m.project.Groups, m.project.DisplayPrecision()))
-	m.linesView.SetContent(FormatLineRows(m.project.SortedFeatures(), m.project.SortedContourSets(), m.project.Groups, m.project.DisplayPrecision()))
+	m.cachedTables(contentWidth)
 }
 
 func (m *Model) shouldCycleFocusOnTab() bool {
@@ -806,13 +893,8 @@ func (m *Model) handleMainMouse(msg tea.MouseMsg) (bool, tea.Cmd) {
 }
 
 func (m Model) mainPaneAt(x, y int) (mainFocus, bool) {
-	width := max(60, m.width)
-	height := max(18, m.height) - tabBarHeight
+	width, infoHeight, pointHeight, lineHeight, commandHeight := m.mainLayout()
 	y -= tabBarHeight
-	infoHeight := 4
-	commandHeight := 6
-	lineHeight := max(5, height/4)
-	pointHeight := max(6, height-infoHeight-commandHeight-lineHeight)
 
 	if x < 0 || x >= width {
 		return focusCommand, false
@@ -925,6 +1007,7 @@ func (m *Model) invalidateCompletions() {
 }
 
 func (m *Model) recordHistory(command string) {
+	m.historyDraft = ""
 	command = strings.TrimSpace(command)
 	if command == "" {
 		m.histIdx = len(m.history)
@@ -940,9 +1023,11 @@ func (m *Model) previousHistory() {
 	if len(m.history) == 0 {
 		return
 	}
-	if m.histIdx <= 0 || m.histIdx > len(m.history) {
-		m.histIdx = len(m.history) - 1
-	} else {
+	if m.histIdx < 0 || m.histIdx >= len(m.history) {
+		m.historyDraft = m.input.Value()
+		m.histIdx = len(m.history)
+	}
+	if m.histIdx > 0 {
 		m.histIdx--
 	}
 	m.input.SetValue(m.history[m.histIdx])
@@ -953,12 +1038,13 @@ func (m *Model) nextHistory() {
 	if len(m.history) == 0 {
 		return
 	}
-	if m.histIdx < 0 {
-		m.histIdx = 0
+	if m.histIdx < 0 || m.histIdx >= len(m.history) {
+		return
 	}
 	if m.histIdx >= len(m.history)-1 {
 		m.histIdx = len(m.history)
-		m.input.SetValue("")
+		m.input.SetValue(m.historyDraft)
+		m.input.CursorEnd()
 		return
 	}
 	m.histIdx++

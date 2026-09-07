@@ -652,20 +652,19 @@ func TestF5FileBrowserConfirmsDirtySRVOpen(t *testing.T) {
 	m = updated.(Model)
 	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyEnter})
 	m = updated.(Model)
-	if !m.importPicking || m.importConfirmPath != path || m.project.Name != "current" {
-		t.Fatalf("picker=%v confirm=%q project=%q", m.importPicking, m.importConfirmPath, m.project.Name)
+	if m.importPicking || m.pendingAction == "" || m.project.Name != "current" {
+		t.Fatalf("picker=%v confirm=%q project=%q", m.importPicking, m.pendingAction, m.project.Name)
 	}
 	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyEsc})
 	m = updated.(Model)
-	if !m.importPicking || m.importConfirmPath != "" || m.project.Name != "current" {
-		t.Fatalf("cancel picker=%v confirm=%q project=%q", m.importPicking, m.importConfirmPath, m.project.Name)
+	if m.importPicking || m.pendingAction != "" || m.project.Name != "current" {
+		t.Fatalf("cancel picker=%v confirm=%q project=%q", m.importPicking, m.pendingAction, m.project.Name)
 	}
-	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyEnter})
-	m = updated.(Model)
-	if m.importConfirmPath == "" {
+	m.dispatchCommand("open " + quoteStyleField(path))
+	if m.pendingAction == "" {
 		t.Fatal("expected confirmation to restart")
 	}
-	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("d")})
 	m = updated.(Model)
 	if m.importPicking || m.lastErr != "" || m.project.Name != "replacement" || m.path != path {
 		t.Fatalf("picker=%v error=%q path=%q project=%q", m.importPicking, m.lastErr, m.path, m.project.Name)
@@ -871,7 +870,7 @@ func TestMapLineZoomFitAndEscKeys(t *testing.T) {
 	}
 }
 
-func TestMapEntryResetsLabelsAndHelpTabGoesToProject(t *testing.T) {
+func TestMapEntryResetsLabelsAndHelpReturnsToOrigin(t *testing.T) {
 	m := NewModel(project.New("test"), "")
 	m.ExecuteCommand("map")
 	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'i'}})
@@ -887,10 +886,12 @@ func TestMapEntryResetsLabelsAndHelpTabGoesToProject(t *testing.T) {
 	}
 	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyEsc})
 	m = updated.(Model)
-	if m.mode != ModeMain || !m.mapState.ShowCodes {
-		t.Fatalf("help escape should select project and retain map state: mode=%v state=%+v", m.mode, m.mapState)
+	if m.mode != ModeMap || !m.mapState.ShowCodes {
+		t.Fatalf("help escape should return to map and retain map state: mode=%v state=%+v", m.mode, m.mapState)
 	}
 
+	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyEsc})
+	m = updated.(Model)
 	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyF2})
 	m = updated.(Model)
 	if m.mapState.ShowCodes {

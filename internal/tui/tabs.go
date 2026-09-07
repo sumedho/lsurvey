@@ -45,6 +45,9 @@ func (m Model) renderTabs(width int) string {
 }
 
 func (m *Model) handleTabMouse(msg tea.MouseMsg) bool {
+	if m.width > 0 && msg.X >= m.width {
+		return false
+	}
 	if msg.Y != 0 || msg.Button != tea.MouseButtonLeft || msg.Action != tea.MouseActionPress {
 		return false
 	}
@@ -71,6 +74,9 @@ func tabAtX(x int) (screenTab, bool) {
 }
 
 func (m *Model) selectTab(mode Mode) {
+	if m.mode == mode {
+		return
+	}
 	switch mode {
 	case ModeMain:
 		m.mode = ModeMain

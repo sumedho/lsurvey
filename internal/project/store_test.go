@@ -1,6 +1,7 @@
 package project
 
 import (
+	"database/sql"
 	"errors"
 	"os"
 	"path/filepath"
@@ -19,21 +20,21 @@ func TestSaveBackupAndExplicitRecovery(t *testing.T) {
 	if err := Save(path, p); err != nil {
 		t.Fatal(err)
 	}
-	got, err := (JSONStore{}).Recover(path)
+	got, err := (SQLiteStore{}).Recover(path)
 	if err != nil || got.Name != "original" {
 		t.Fatalf("backup=%+v err=%v", got, err)
 	}
 	if err = os.WriteFile(path, []byte("corrupt"), 0600); err != nil {
 		t.Fatal(err)
 	}
-	got, err = (JSONStore{}).Recover(path)
+	got, err = (SQLiteStore{}).Recover(path)
 	if err != nil || got.Name != "original" {
 		t.Fatalf("recovery=%+v err=%v", got, err)
 	}
 	if err = Save(path, p); err == nil {
 		t.Fatal("overwrote corrupt original")
 	}
-	got, err = (JSONStore{}).Recover(path)
+	got, err = (SQLiteStore{}).Recover(path)
 	if err != nil || got.Name != "original" {
 		t.Fatal("lost recovery copy")
 	}
@@ -45,12 +46,7 @@ func TestSaveReplacementFailurePreservesOriginalAndCleansTemps(t *testing.T) {
 	if err := Save(path, New("original")); err != nil {
 		t.Fatal(err)
 	}
-	store := JSONStore{replace: func(from, to string) error {
-		if to == path {
-			return errors.New("injected replacement failure")
-		}
-		return replaceFile(from, to)
-	}}
+	store := SQLiteStore{beforeCommit: func(*sql.Tx) error { return errors.New("injected transaction failure") }}
 	if err := store.Save(path, New("revised")); err == nil {
 		t.Fatal("expected failure")
 	}
@@ -108,7 +104,7 @@ func TestBackupFailureDoesNotReplaceCurrentSave(t *testing.T) {
 	if err := Save(path, New("original")); err != nil {
 		t.Fatal(err)
 	}
-	store := JSONStore{replace: func(string, string) error { return errors.New("backup disk failure") }}
+	store := SQLiteStore{replace: func(string, string) error { return errors.New("backup disk failure") }}
 	if err := store.Save(path, New("revised")); err == nil {
 		t.Fatal("expected error")
 	}

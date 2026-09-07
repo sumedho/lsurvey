@@ -4,6 +4,7 @@ import (
 	"strings"
 
 	"github.com/charmbracelet/lipgloss"
+	"github.com/charmbracelet/x/ansi"
 )
 
 func box(title, body string, width, height int) string {
@@ -43,9 +44,5 @@ func truncate(value string, width int) string {
 	if lipgloss.Width(value) <= width {
 		return value
 	}
-	runes := []rune(value)
-	for len(runes) > 0 && lipgloss.Width(string(runes)+"…") > width {
-		runes = runes[:len(runes)-1]
-	}
-	return string(runes) + "…"
+	return ansi.Truncate(value, width, "…")
 }

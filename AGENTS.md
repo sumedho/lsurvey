@@ -34,13 +34,20 @@ so another UI, such as a web frontend, can be added later.
 - Prefer standard library code unless a dependency clearly improves the TUI or
   another established boundary.
 - Keep project persistence backward-compatible when practical.
-- JSON is temporary persistence. Keep lifecycle I/O behind `project.Store`;
-  the planned SQLite store will use a relational schema, not JSON blobs or a
-  schema dictated by existing JSON fields.
+- Keep lifecycle I/O behind `project.Store`. `SQLiteStore` uses modernc.org/sqlite
+  and native relational tables, not project JSON blobs. Legacy JSON is read-only;
+  converting it requires saving to a new path. SQLite schema versions are
+  independent of legacy JSON versions.
 - Validate project integrity on load and before committing session edits/saves.
-- File saves use a synced temporary file and atomic replacement, preserving one
-  previous valid save as `.srv.bak`. `recover <file>` loads that backup as an
-  unsaved project and clears undo/redo; it never overwrites the original.
+- Existing SQLite saves use a transaction and preserve the audit prefix; new
+  files and `.srv.bak` snapshots use synced temporary files and atomic publication.
+  Never copy an active SQLite main file as a backup: include committed WAL data
+  using a SQLite snapshot. `recover <file>` loads the backup as an unsaved project
+  and clears undo/redo; it never overwrites the original.
+- Enable foreign keys on every database connection. Retain stale contour and
+  audit references as historical IDs rather than FKs to deletable live geometry.
+- Keep modernc.org/libc at the version required by modernc.org/sqlite; validate
+  CGO-disabled builds when changing the storage driver.
 - Add tests for save/load changes.
 - Add tests for import/export format changes.
 - Add tests for TUI command handling when command behavior changes.
@@ -184,6 +191,17 @@ id,easting,northing,elevation,code,description
 
 ## TUI Expectations
 
+- `F6`/`results` opens retained, scrollable command results; copy and new-file
+  text export must not truncate the underlying report or overwrite a file.
+- User-triggered open/new/recover/quit share Save/Discard/Cancel protection.
+  Staged conversion rows are not saved with project data; warn before clearing.
+- Forms must keep the active field and feedback visible; table headers remain
+  pinned, full row details are accessible, and views fit the terminal bounds.
+- Interactive background jobs use isolated sessions and serialize publication.
+  Cancellation discards unpublished results; saves/exports finish safely.
+- Reuse cached table data until project data, filter, sort, precision or width
+  changes. Keyboard/mouse navigation preserves drafts; Help returns to its origin.
+- Command history must not wrap and must restore the unfinished input draft.
 - The command input belongs at the bottom of the TUI.
 - The main view should show a top info area, point list area, line list area,
   and command input area.

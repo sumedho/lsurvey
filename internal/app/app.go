@@ -61,14 +61,25 @@ func Fields(command string) ([]string, error) {
 }
 
 func NewSession(p *project.Project, path, version string) *Session {
-	return &Session{Project: p, Path: path, Version: version, Store: project.JSONStore{}}
+	return &Session{Project: p, Path: path, Version: version, Store: project.SQLiteStore{}}
+}
+
+// Fork creates an isolated working session. History snapshots are immutable;
+// copy the stacks so background edits cannot overwrite their backing arrays.
+// The caller must serialize access to Store and publication of the returned session.
+func (s *Session) Fork() *Session {
+	copy := *s
+	copy.Project = s.Project.Clone()
+	copy.undo = append([]editFrame(nil), s.undo...)
+	copy.redo = append([]editFrame(nil), s.redo...)
+	return &copy
 }
 
 func (s *Session) storage() project.Store {
 	if s.Store != nil {
 		return s.Store
 	}
-	return project.JSONStore{}
+	return project.SQLiteStore{}
 }
 
 func (s *Session) save(path string) error {

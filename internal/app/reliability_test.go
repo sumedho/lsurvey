@@ -13,7 +13,7 @@ import (
 	"lsurvey/internal/geom"
 )
 
-type failingStore struct{ project.JSONStore }
+type failingStore struct{ project.SQLiteStore }
 
 func (failingStore) Save(string, *project.Project) error { return errors.New("disk full") }
 

@@ -106,6 +106,10 @@ func (m Model) updateConvert(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "esc", "f4":
 		m.mode = ModeMain
 	case "s":
+		if len(m.convert.Rows) > 0 {
+			m.pendingAction = "conversion-source"
+			return m, nil
+		}
 		m.convert.Source = nextConversionSystem(m.convert.Source)
 		m.convert.Rows = nil
 		m.message = "source changed; staged rows cleared"
@@ -139,6 +143,12 @@ func (m Model) updateConvert(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.convert.Selected = min(max(0, len(m.convert.Rows)-1), m.convert.Selected+1)
 	case "a":
 		m.startConversionAdd()
+	case "enter":
+		if len(m.convert.Rows) > 0 {
+			row := m.convert.Rows[m.convert.Selected]
+			m.appendResult(commandResult{"Staged point details", fmt.Sprintf("ID: %s\nSource: %s\nResult: %s\nCode: %s\nDescription: %s\nError: %s", row.ID, row.sourceText(m.convert.Source), row.resultText(), row.Code, row.Description, row.Error)})
+			m.openResults()
+		}
 	case "i":
 		return m, m.startConversionPicker(conversionFormImport)
 	case "g":
@@ -146,6 +156,10 @@ func (m Model) updateConvert(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "x":
 		m.removeConversionRow()
 	case "r":
+		if m.asyncJobs {
+			m.queueConversion("")
+			return m, nil
+		}
 		m.calculateConversions()
 	case "c":
 		m.commitConvertedRows(false, false)
@@ -226,6 +240,12 @@ func (m Model) updateConversionPicker(msg tea.Msg) (tea.Model, tea.Cmd) {
 	if selected, path := m.convert.picker.DidSelectFile(msg); selected {
 		switch m.convert.form {
 		case conversionFormImport:
+			if m.asyncJobs {
+				m.convert.form = conversionFormNone
+				m.convert.picking = false
+				m.queueConversion(path)
+				return m, nil
+			}
 			if err := m.importConversionCSV(path); err != nil {
 				m.setError(err.Error())
 				return m, cmd
@@ -503,11 +523,16 @@ func (m *Model) commitConvertedRows(all, assumeExisting bool) {
 	if sourceDatum != datum {
 		model = m.convert.Model
 	}
-	outcome, err := m.session.CommitConvertedPoints(app.ConversionCommit{
+	request := app.ConversionCommit{
 		Points: points, TargetCRS: project.HorizontalCRS{Datum: string(datum), Projection: "MGA", Zone: m.convert.TargetZone},
 		SourceSystem: string(m.convert.Source), TargetSystem: string(m.convert.Target), Model: model,
 		AssumeExisting: assumeExisting,
-	})
+	}
+	if m.asyncJobs {
+		m.queueConversionCommit(request, all)
+		return
+	}
+	outcome, err := m.session.CommitConvertedPoints(request)
 	if err != nil {
 		if strings.Contains(err.Error(), "confirm they are") && !assumeExisting {
 			m.convert.confirm = true
@@ -519,6 +544,7 @@ func (m *Model) commitConvertedRows(all, assumeExisting bool) {
 		return
 	}
 	m.syncSessionState()
+	m.tableRevision++
 	m.refreshCompletions()
 	m.syncMainViewports()
 	m.convert.confirm = false
@@ -543,6 +569,9 @@ func (m *Model) removeConversionRow() {
 }
 
 func (m Model) renderConvert(width, height int) string {
+	if m.convert.form != conversionFormNone && !m.convert.picking {
+		return m.renderConversionForm(width, height)
+	}
 	if m.convert.picking {
 		title := "Select conversion CSV"
 		if m.convert.form == conversionFormGrid {
@@ -558,10 +587,16 @@ func (m Model) renderConvert(width, height int) string {
 	settings := fmt.Sprintf("Source: %-18s zone=%d   Target: %-18s zone=%s\nModel: %-25s  NTv2: %s\nAngles: dd.mmsshhhh or decimal d; S=-/S E=E; MGA zone auto from longitude; heights unchanged",
 		m.convert.Source, m.convert.SourceZone, m.convert.Target,
 		m.convert.targetZoneText(), m.convert.Model, quoteBlank(m.convert.GridPath))
+	if height < 18 {
+		return m.renderCompactConversion(width, height)
+	}
 	tableHeight := max(6, height-13)
 	start := max(0, m.convert.Selected-(tableHeight-5))
 	end := min(len(m.convert.Rows), start+tableHeight-4)
 	rows := m.conversionTableRows(start, end)
+	if width < 110 {
+		rows = m.compactConversionRows(start, end, width-4)
+	}
 	if len(m.convert.Rows) == 0 {
 		rows = append(rows, mutedStyle.Render("  No staged rows. Press a to add or i to import CSV."))
 	}

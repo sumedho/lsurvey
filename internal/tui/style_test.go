@@ -28,10 +28,12 @@ func TestStyleScreenOpensFromCommandShortcutAndHelpTab(t *testing.T) {
 	}
 	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyEsc})
 	m = updated.(Model)
-	if m.mode != ModeMain {
-		t.Fatalf("mode=%v want main", m.mode)
+	if m.mode != ModeStyle {
+		t.Fatalf("mode=%v want originating style screen", m.mode)
 	}
 
+	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyEsc})
+	m = updated.(Model)
 	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyF3})
 	m = updated.(Model)
 	if m.mode != ModeStyle {

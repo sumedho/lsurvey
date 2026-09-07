@@ -404,12 +404,19 @@ func (m *Model) submitStyleForm() {
 }
 
 func (m *Model) executeStyleCommand(command string) bool {
+	if m.asyncJobs && (strings.HasPrefix(command, "import ") || strings.HasPrefix(command, "export ")) {
+		m.queueSessionCommand(command)
+		m.job.styleImport = true
+		return false
+	}
+	defer m.retainResult(command)
 	outcome, err := m.session.Execute(command)
 	if err != nil {
 		m.setError(err.Error())
 		return false
 	}
 	m.syncSessionState()
+	m.tableRevision++
 	if outcome.ProjectReplaced {
 		m.mapState = newMapState()
 	}
@@ -461,6 +468,12 @@ func (m *Model) confirmStyleDelete() {
 }
 
 func (m Model) renderStyle(width, height int) string {
+	if m.style.form != styleFormNone && m.style.form != styleFormDelete {
+		return m.renderStyleForm(width, height)
+	}
+	if width < 100 || height < 26 {
+		return m.renderCompactStyle(width, height)
+	}
 	m.style.ensureSelection(m.project)
 	innerWidth := max(56, width-4)
 	leftWidth := innerWidth / 2

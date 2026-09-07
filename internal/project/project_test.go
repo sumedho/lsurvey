@@ -8,7 +8,7 @@ import (
 	"lsurvey/internal/geom"
 )
 
-func TestProjectJSONRoundTripPreservesPointCode(t *testing.T) {
+func TestProjectRoundTripPreservesPointCode(t *testing.T) {
 	p := New("test")
 	p.AppVersion = "v1.2.3"
 	p.Description = "Boundary survey"
@@ -51,7 +51,7 @@ func TestProjectJSONRoundTripPreservesPointCode(t *testing.T) {
 	p.AddHistory("pt add 1 100 200 42.5 PEG", "added point 1", []string{"point:1"}, nil)
 	p.AddHistoryChange("undo", "undid pt edit 1 code=PEG", nil, []string{"point:1"}, []string{"point:2"}, map[string]string{"action": "undo"}, nil)
 
-	path := filepath.Join(t.TempDir(), "project.lsurvey.json")
+	path := filepath.Join(t.TempDir(), "project.srv")
 	if err := Save(path, p); err != nil {
 		t.Fatal(err)
 	}
