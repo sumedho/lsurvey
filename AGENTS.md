@@ -34,6 +34,13 @@ so another UI, such as a web frontend, can be added later.
 - Prefer standard library code unless a dependency clearly improves the TUI or
   another established boundary.
 - Keep project persistence backward-compatible when practical.
+- JSON is temporary persistence. Keep lifecycle I/O behind `project.Store`;
+  the planned SQLite store will use a relational schema, not JSON blobs or a
+  schema dictated by existing JSON fields.
+- Validate project integrity on load and before committing session edits/saves.
+- File saves use a synced temporary file and atomic replacement, preserving one
+  previous valid save as `.srv.bak`. `recover <file>` loads that backup as an
+  unsaved project and clears undo/redo; it never overwrites the original.
 - Add tests for save/load changes.
 - Add tests for import/export format changes.
 - Add tests for TUI command handling when command behavior changes.
@@ -85,6 +92,13 @@ id,easting,northing,elevation,code,description
 - `offset` must work from either two point IDs or one stored line ID.
 - `resect` takes three known points and bearings observed from the unknown point
   to those points, then stores the best-fit point from the reverse bearing lines.
+- `trav report [compass|transit]` is a non-mutating horizontal adjustment preview.
+- `trav adjust compass|transit` uses course-length weights for compass and
+  absolute per-axis course components for transit. Elevations are unchanged.
+  Preserve pre-adjustment QA in audit history; reject repeat adjustment until
+  undo or `trav start`. Closing control must not be a generated leg point.
+- Point deletion rejects current traverse references; renaming updates them.
+- `check` validates integrity and reports CRS/terrain warnings without mutation.
 - `rad3d` must use slope distance and zenith angle, with zenith 90° treated as
   horizontal.
 - `transform fit` takes alternating source/target point IDs, reports a

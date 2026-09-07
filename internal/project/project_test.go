@@ -26,7 +26,8 @@ func TestProjectJSONRoundTripPreservesPointCode(t *testing.T) {
 	p.Groups["BOUND"] = Group{ID: "BOUND", Layer: "BOUNDARIES", Color: 1}
 	p.PointCodeStyles["PEG"] = "BOUND"
 	p.Points["1"] = geom.Point{ID: "1", Northing: 100, Easting: 200, Elevation: &z, Code: "PEG", GroupID: "BOUND"}
-	p.Features["L1"] = Feature{ID: "L1", Kind: FeatureLine, PointIDs: []string{"1", "1"}, Code: "BOUNDARY", TerrainRole: "ridge", GroupID: "BOUND"}
+	p.Points["2"] = geom.Point{ID: "2", Easting: 210, Northing: 110}
+	p.Features["L1"] = Feature{ID: "L1", Kind: FeatureLine, PointIDs: []string{"1", "2"}, Code: "BOUNDARY", TerrainRole: "ridge", GroupID: "BOUND"}
 	p.ContourSets["C1"] = ContourSet{
 		ID:               "C1",
 		Interval:         1,
@@ -275,7 +276,7 @@ func TestLoadMigratesSchemaOneProject(t *testing.T) {
 
 func TestLoadMigratesLegacyLinesToFeatures(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "old-lines.srv")
-	data := []byte(`{"schema_version":5,"name":"old","points":{},"lines":{"L1":{"id":"L1","from":"1","to":"2","code":"BND"}},"history":[]}`)
+	data := []byte(`{"schema_version":5,"name":"old","points":{"1":{"id":"1"},"2":{"id":"2","easting":10}},"lines":{"L1":{"id":"L1","from":"1","to":"2","code":"BND"}},"history":[]}`)
 	if err := os.WriteFile(path, data, 0o644); err != nil {
 		t.Fatal(err)
 	}

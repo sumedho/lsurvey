@@ -7,6 +7,7 @@ import (
 )
 
 type Result struct {
+	Extra               any
 	Message             string
 	Created             []string
 	Updated             []string
@@ -87,7 +88,7 @@ func Execute(p *project.Project, command string) (Result, error) {
 func ExecuteAndRecord(p *project.Project, command string) (Result, error) {
 	result, err := Execute(p, command)
 	if err == nil && result.Changed {
-		p.AddHistoryChange(command, result.Message, result.Created, result.Updated, result.Deleted, nil, nil)
+		p.AddHistoryChange(command, result.Message, result.Created, result.Updated, result.Deleted, result.Extra, nil)
 	}
 	return result, err
 }

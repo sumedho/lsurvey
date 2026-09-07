@@ -20,6 +20,7 @@ import (
 )
 
 type Session struct {
+	Store   project.Store
 	Project *project.Project
 	Path    string
 	Version string
@@ -60,7 +61,26 @@ func Fields(command string) ([]string, error) {
 }
 
 func NewSession(p *project.Project, path, version string) *Session {
-	return &Session{Project: p, Path: path, Version: version}
+	return &Session{Project: p, Path: path, Version: version, Store: project.JSONStore{}}
+}
+
+func (s *Session) storage() project.Store {
+	if s.Store != nil {
+		return s.Store
+	}
+	return project.JSONStore{}
+}
+
+func (s *Session) save(path string) error {
+	candidate := s.Project.Clone()
+	candidate.AppVersion = s.Version
+	if err := s.storage().Save(path, candidate); err != nil {
+		return err
+	}
+	s.Project.AppVersion = s.Version
+	s.Path = path
+	s.Dirty = false
+	return nil
 }
 
 func (s *Session) Execute(command string) (Outcome, error) {
@@ -95,11 +115,12 @@ func (s *Session) executeCOGOCommand(command string) (Outcome, error) {
 	}
 	result, err := cogo.Execute(s.Project, command)
 	if err != nil {
+		*s.Project = *before
 		return Outcome{}, err
 	}
 	outcome := Outcome{Message: result.Message}
 	if result.Changed {
-		if err := s.commitMutation(before, command, result.Message, result.Created, result.Updated, result.Deleted); err != nil {
+		if err := s.commitMutationExtra(before, command, result.Message, result.Created, result.Updated, result.Deleted, result.Extra); err != nil {
 			return Outcome{}, err
 		}
 		outcome.ProjectChanged = true
@@ -112,6 +133,10 @@ func (s *Session) commitMutation(before *project.Project, command, message strin
 }
 
 func (s *Session) commitMutationExtra(before *project.Project, command, message string, created, updated, deleted []string, extra any) error {
+	if err := s.Project.Validate(); err != nil {
+		*s.Project = *before
+		return fmt.Errorf("edit rejected: %w", err)
+	}
 	s.Project.AddHistoryChange(command, message, created, updated, deleted, extra, nil)
 	after, err := cloneProject(s.Project)
 	if err != nil {

@@ -40,7 +40,7 @@ func (l sessionLifecycle) TryExecute(command string, fields []string) (Outcome, 
 			return Outcome{}, true, fmt.Errorf("usage: open <file>")
 		}
 		path := paths.Project(fields[1])
-		loaded, err := project.Load(path)
+		loaded, err := s.storage().Load(path)
 		if err != nil {
 			return Outcome{}, true, err
 		}
@@ -50,6 +50,40 @@ func (l sessionLifecycle) TryExecute(command string, fields []string) (Outcome, 
 		s.clearNavigation()
 		outcome.Message = "opened " + s.Path
 		outcome.ProjectReplaced = true
+	case "recover":
+		if len(fields) != 2 {
+			return Outcome{}, true, fmt.Errorf("usage: recover <project file>")
+		}
+		loaded, err := s.storage().Recover(paths.Project(fields[1]))
+		if err != nil {
+			return Outcome{}, true, err
+		}
+		s.Project = loaded
+		s.Path = ""
+		s.Dirty = true
+		s.clearNavigation()
+		outcome.Message = "recovered previous save; use saveas with a new path to preserve the original"
+		outcome.ProjectReplaced = true
+	case "check":
+		if len(fields) != 1 {
+			return Outcome{}, true, fmt.Errorf("usage: check")
+		}
+		if err := s.Project.Validate(); err != nil {
+			return Outcome{}, true, err
+		}
+		outcome.Message = "project integrity OK (not a survey accuracy certification)"
+		if s.Project.HorizontalCRS == nil {
+			outcome.Message += "\nwarning: horizontal CRS unspecified"
+		}
+		outcome.Message += "\nwarning: vertical datum/height type not modelled"
+		for _, set := range s.Project.SortedContourSets() {
+			if set.Stale {
+				outcome.Message += "\nwarning: contour " + set.ID + " stale: " + set.StaleReason
+			}
+			for _, d := range set.Diagnostics {
+				outcome.Message += "\nwarning: contour " + set.ID + ": " + d.Message
+			}
+		}
 	case "save":
 		path := s.Path
 		if len(fields) > 2 {
@@ -62,24 +96,18 @@ func (l sessionLifecycle) TryExecute(command string, fields []string) (Outcome, 
 			return Outcome{}, true, fmt.Errorf("usage: save <file>")
 		}
 		path = paths.Project(path)
-		s.Project.AppVersion = s.Version
-		if err := project.Save(path, s.Project); err != nil {
+		if err := s.save(path); err != nil {
 			return Outcome{}, true, err
 		}
-		s.Path = path
-		s.Dirty = false
 		outcome.Message = "saved " + s.Path
 	case "saveas":
 		if len(fields) != 2 {
 			return Outcome{}, true, fmt.Errorf("usage: saveas <file>")
 		}
 		path := paths.Project(fields[1])
-		s.Project.AppVersion = s.Version
-		if err := project.Save(path, s.Project); err != nil {
+		if err := s.save(path); err != nil {
 			return Outcome{}, true, err
 		}
-		s.Path = path
-		s.Dirty = false
 		outcome.Message = "saved " + s.Path
 	case "export":
 		if len(fields) < 3 {

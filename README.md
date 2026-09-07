@@ -152,6 +152,8 @@ Map keys:
 ```text
 new <name>
 open <file>
+recover <file>
+check
 save [file]
 saveas <file>
 desc <project description>
@@ -171,6 +173,14 @@ Notes:
 - `open job` and `open job.srv` both load `job.srv`.
 - `save job` writes `job.srv`.
 - `saveas revised` writes `revised.srv`.
+- Saves validate the project and replace the file atomically. Replacing a valid
+  save retains its previous contents in `<file>.srv.bak`. `recover job` loads that
+  previous save as an unsaved project; use `saveas recovered` to preserve the
+  original. Recovery clears session undo/redo. This is previous-save recovery,
+  not autosave of unsaved edits. Corrupt originals are not overwritten by Save.
+- `check` validates project references and geometry and reports missing CRS
+  metadata, stale contours, and terrain diagnostics. It does not certify survey
+  accuracy. Invalid loads and failed saves leave the current session intact.
 - `desc Boundary survey Lot 42` updates the description shown in the top bar
   and stores it in the project file.
 - `precision 3` displays coordinates, distances, and elevations to three
@@ -336,6 +346,7 @@ trav leg <azimuth|bearing> <distance> [vdiff <delta>] [code]
 trav show
 trav close <known_point>
 trav adjust compass|transit
+trav report [compass|transit]
 ```
 
 Examples:
@@ -350,7 +361,17 @@ trav adjust compass
 ```
 
 Start a traverse from a known point, add legs, close onto a known point, then
-apply compass or transit adjustment.
+apply compass or transit adjustment. `trav report` previews closure, relative
+precision, per-course corrections, and adjusted coordinates without editing.
+Compass (Bowditch) distributes horizontal closure by course length; transit
+distributes each coordinate correction by the absolute course component on that
+axis. An unsupported transit axis correction is rejected. Both leave elevations
+unchanged; neither performs angular adjustment or estimates uncertainty.
+The pre-adjustment QA is retained in audit history, including structured results.
+After adjustment, use `trav start` for a new traverse or `undo` to revise the old
+one. Closing control cannot be one of the generated traverse leg points.
+
+The rule definitions follow [USACE EM 1110-1-1005](https://www.publications.usace.army.mil/Portals/76/Publications/EngineerManuals/EM_1110-1-1005.pdf).
 
 ## Contour Commands
 

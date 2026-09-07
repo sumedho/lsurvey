@@ -695,9 +695,10 @@ func TestF5FileBrowserCancelAndUnsupportedSelection(t *testing.T) {
 }
 
 func TestSaveWithoutArgumentNormalizesExistingPath(t *testing.T) {
-	m := NewModel(project.New("test"), "job")
+	path := filepath.Join(t.TempDir(), "job")
+	m := NewModel(project.New("test"), path)
 	m.ExecuteCommand("save")
-	if m.path != "job.srv" {
+	if m.path != path+".srv" {
 		t.Fatalf("path=%q want job.srv", m.path)
 	}
 }
@@ -1184,7 +1185,7 @@ func TestStatusLineShowsActiveTraverseContext(t *testing.T) {
 	m := NewModel(project.New("test"), "")
 	m.project.Points["1"] = geom.Point{ID: "1", Easting: 0, Northing: 0}
 	m.project.Points["3"] = geom.Point{ID: "3", Easting: 10, Northing: 0}
-	m.project.ContourSets["C1"] = project.ContourSet{ID: "C1"}
+	m.project.ContourSets["C1"] = project.ContourSet{ID: "C1", Interval: 1}
 	m.ExecuteCommand("trav start 1")
 
 	status := m.infoText(2)

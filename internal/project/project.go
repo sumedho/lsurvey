@@ -3,7 +3,6 @@ package project
 import (
 	"encoding/json"
 	"fmt"
-	"os"
 	"sort"
 	"strconv"
 	"strings"
@@ -121,6 +120,7 @@ type HistoryRecord struct {
 }
 
 type TraverseState struct {
+	Adjusted    bool     `json:"adjusted,omitempty"`
 	Start       string   `json:"start"`
 	Current     string   `json:"current"`
 	Close       string   `json:"close,omitempty"`
@@ -191,29 +191,11 @@ func New(name string) *Project {
 }
 
 func Load(path string) (*Project, error) {
-	data, err := os.ReadFile(path)
-	if err != nil {
-		return nil, err
-	}
-	var p Project
-	if err := json.Unmarshal(data, &p); err != nil {
-		return nil, err
-	}
-	if p.SchemaVersion < 1 || p.SchemaVersion > CurrentSchemaVersion {
-		return nil, fmt.Errorf("unsupported schema_version %d", p.SchemaVersion)
-	}
-	p.ensure()
-	return &p, nil
+	return (JSONStore{}).Load(path)
 }
 
 func Save(path string, p *Project) error {
-	p.ensure()
-	data, err := json.MarshalIndent(p, "", "  ")
-	if err != nil {
-		return err
-	}
-	data = append(data, '\n')
-	return os.WriteFile(path, data, 0o644)
+	return (JSONStore{}).Save(path, p)
 }
 
 func (p *Project) AddHistory(command, result string, created []string, err error) {

@@ -36,6 +36,9 @@ func execPoint(p *project.Project, f []string) (Result, error) {
 		i := 5
 		if i < len(f) {
 			if v, err := strconv.ParseFloat(f[i], 64); err == nil {
+				if !geom.Finite(v) {
+					return Result{}, fmt.Errorf("elevation must be finite")
+				}
 				z = &v
 				i++
 			}
@@ -118,6 +121,13 @@ func execPoint(p *project.Project, f []string) (Result, error) {
 		if _, ok := p.Points[id]; !ok {
 			return Result{}, fmt.Errorf("point %q not found", id)
 		}
+		if tr := p.Traverse; tr != nil {
+			for _, used := range append([]string{tr.Start, tr.Current, tr.Close}, tr.LegPointIDs...) {
+				if used == id {
+					return Result{}, fmt.Errorf("point %q is used by the current traverse; start a new traverse before deleting", id)
+				}
+			}
+		}
 		for _, feature := range p.Features {
 			for _, pointID := range feature.PointIDs {
 				if pointID == id {
@@ -141,6 +151,25 @@ func execPoint(p *project.Project, f []string) (Result, error) {
 		delete(p.Points, f[2])
 		pt.ID = f[3]
 		p.Points[f[3]] = pt
+		if tr := p.Traverse; tr != nil {
+			if tr.Start == f[2] {
+				tr.Start = f[3]
+			}
+			if tr.Current == f[2] {
+				tr.Current = f[3]
+			}
+			if tr.Close == f[2] {
+				tr.Close = f[3]
+			}
+			for i, id := range tr.LegPointIDs {
+				if id == f[2] {
+					tr.LegPointIDs[i] = f[3]
+				}
+			}
+		}
+		if g := p.GridGround; g != nil && g.AnchorPointID == f[2] {
+			g.AnchorPointID = f[3]
+		}
 		for id, feature := range p.Features {
 			for i, pointID := range feature.PointIDs {
 				if pointID == f[2] {

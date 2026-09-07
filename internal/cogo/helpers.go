@@ -30,6 +30,9 @@ func point(p *project.Project, id string) (geom.Point, error) {
 }
 
 func storeCreatedPoint(p *project.Project, pt geom.Point) error {
+	if !geom.FinitePoint(pt) {
+		return fmt.Errorf("point coordinates must be finite")
+	}
 	if _, exists := p.Points[pt.ID]; exists {
 		return fmt.Errorf("point %q already exists", pt.ID)
 	}
@@ -39,7 +42,7 @@ func storeCreatedPoint(p *project.Project, pt geom.Point) error {
 
 func parseFloat(name, value string) (float64, error) {
 	f, err := strconv.ParseFloat(value, 64)
-	if err != nil {
+	if err != nil || !geom.Finite(f) {
 		return 0, fmt.Errorf("invalid %s %q", name, value)
 	}
 	return f, nil

@@ -102,7 +102,9 @@ func Close(points []Point) (CloseResult, bool) {
 	var perimeter float64
 	for i := range points {
 		j := (i + 1) % len(points)
-		twiceArea += points[i].Easting*points[j].Northing - points[j].Easting*points[i].Northing
+		ei, ni := points[i].Easting-points[0].Easting, points[i].Northing-points[0].Northing
+		ej, nj := points[j].Easting-points[0].Easting, points[j].Northing-points[0].Northing
+		twiceArea += ei*nj - ej*ni
 		perimeter += Inverse(points[i], points[j]).HorizontalDistance
 	}
 	misclose := Inverse(points[len(points)-1], points[0])
@@ -249,17 +251,18 @@ func RotatePoint(p Point, origin Point, angle Angle) Point {
 }
 
 func LineIntersection(a1, a2, b1, b2 Point, id, code string) (Point, bool) {
-	x1, y1 := a1.Easting, a1.Northing
-	x2, y2 := a2.Easting, a2.Northing
-	x3, y3 := b1.Easting, b1.Northing
-	x4, y4 := b2.Easting, b2.Northing
+	// Translate before forming determinants to avoid cancellation at MGA offsets.
+	x1, y1 := 0.0, 0.0
+	x2, y2 := a2.Easting-a1.Easting, a2.Northing-a1.Northing
+	x3, y3 := b1.Easting-a1.Easting, b1.Northing-a1.Northing
+	x4, y4 := b2.Easting-a1.Easting, b2.Northing-a1.Northing
 	den := (x1-x2)*(y3-y4) - (y1-y2)*(x3-x4)
 	if math.Abs(den) < 1e-12 {
 		return Point{}, false
 	}
 	px := ((x1*y2-y1*x2)*(x3-x4) - (x1-x2)*(x3*y4-y3*x4)) / den
 	py := ((x1*y2-y1*x2)*(y3-y4) - (y1-y2)*(x3*y4-y3*x4)) / den
-	return Point{ID: id, Northing: py, Easting: px, Code: code}, true
+	return Point{ID: id, Northing: py + a1.Northing, Easting: px + a1.Easting, Code: code}, true
 }
 
 func BearingBearingIntersection(p1 Point, az1 Angle, p2 Point, az2 Angle, id, code string) (Point, bool) {

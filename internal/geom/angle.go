@@ -45,7 +45,7 @@ func ParseAngle(input string) (Angle, error) {
 	}
 	if strings.HasSuffix(strings.ToLower(s), "d") {
 		deg, err := strconv.ParseFloat(strings.TrimSuffix(strings.TrimSuffix(s, "d"), "D"), 64)
-		if err != nil {
+		if err != nil || !Finite(deg) {
 			return Angle{}, fmt.Errorf("invalid decimal degrees %q", input)
 		}
 		return AngleFromDegrees(deg), nil
